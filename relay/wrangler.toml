@@ -1,0 +1,7 @@
+name = "block-catch-lb"
+main = "worker.js"
+compatibility_date = "2026-09-01"
+
+[vars]
+DREAMLO_PUBLIC = "6ac7f2ab8f40bc15a840f341"
+# DREAMLO_PRIVATE is stored as a Cloudflare secret (npx wrangler secret put DREAMLO_PRIVATE), not in this file
