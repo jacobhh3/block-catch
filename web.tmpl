@@ -161,6 +161,12 @@ config = {
     fb_height : "{{cookiecutter.height}}"
 }
 
+// iPhone Safari mutes game sound while the ring/silent switch is on silent (unless the game is on the home
+// screen). "playback" tells it this is real audio, like a video, so it plays either way.
+try {
+    if (navigator.audioSession) navigator.audioSession.type = "playback"
+} catch (e) {}
+
 function show_infobox() {
     infobox.style.display = "block";
 
