@@ -168,19 +168,16 @@ try {
 } catch (e) {}
 
 function show_infobox() {
-    infobox.style.display = "block";
-
-    // Measure box
-    const w = infobox.offsetWidth;
-    const h = infobox.offsetHeight;
-
-    // Center in viewport
-    const left = (window.innerWidth - w) / 2;
-    const top = (window.innerHeight - h) / 2;
-
-    infobox.style.left = left + "px";
-    infobox.style.top = top + "px";
+    infobox.style.display = "block";  // centered by its CSS, whatever the text or screen size
 }
+
+// Tap to start: phones only allow sound after a tap. pygbag listens for "click", which iPhones don't send for
+// taps on plain parts of the page (and on Android it only rechecks every 2 seconds), so take any tap or key.
+function unlock_sound() {
+    if (window.MM) MM.UME = 1
+}
+for (const ev of ["touchend", "pointerup", "click", "keydown"])
+    document.addEventListener(ev, unlock_sound, true)
 
 </script>
 
@@ -214,13 +211,19 @@ function show_infobox() {
         }
 
         #infobox {
-            position: fixed; /* center relative to viewport */
+            position: fixed;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
             background: #24222f;
             color: #efe6dc;
+            border: 2px solid #d97757;
             font-family: monospace;
+            font-size: 20px;
             font-weight: bold;
-            padding: 12px 24px;
- /*           display: none; */
+            padding: 16px 28px;
+            white-space: nowrap;
+            cursor: pointer;
             z-index: 999999;
         }
         div.emscripten { text-align: center; }
