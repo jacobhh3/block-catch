@@ -46,6 +46,10 @@ BOMB_RED = (232, 72, 72)
 BOMB_BODY = (16, 15, 22)
 SLAM_RADIUS = 90  # slam shockwave reach to each side of Clawd
 SLAM_REACH = 110  # how far above the ground the shockwave reaches
+DANCE_PRESSES = 4  # easter egg: press slam this many times quickly on the main menu and Clawd dances
+DANCE_GAP = 0.45  # most seconds allowed between those presses
+DANCE_TIME = 2.0
+DANCE_BEAT = 0.25
 GOLD_EVERY = (20, 35)  # seconds between gold blocks shooting across the screen
 GOLD_WARN = 1.2  # seconds of warning at the screen edge before it appears
 GOLD_SPEED = (260, 380)  # random per gold block
@@ -495,7 +499,7 @@ class Game:
         self.hearts = []
         self.p = dict(x=W / 2 - PW / 2, y=GROUND - PH, vx=0.0, vy=0.0, on_ground=True,
                       slam=False, walk=0.0, blink=0.0, chain=0,
-                      dash=0.0, dash_dir=0, dash_cd=0.0)
+                      dash=0.0, dash_dir=0, dash_cd=0.0, dance=0.0, taps=0, tap_gap=0.0)
         self.last_tap = (0, -1.0)
         self.ghosts = []
         self.blocks, self.parts, self.pops = [], [], []
@@ -612,6 +616,28 @@ class Game:
             self.last_tap = (d, self.t)
 
     # ---------- update ----------
+    def dance_check(self, dt, controls):
+        """Easter egg: a few quick slam presses on the main menu and Clawd does a little dance."""
+        p = self.p
+        down = controls[3]
+        pressed = down and not p.get("down_held")
+        p["down_held"] = down
+        p["tap_gap"] += dt
+        if self.mode != "title":
+            p["taps"], p["dance"] = 0, 0.0
+            return
+        if p["dance"] > 0:
+            p["dance"] -= dt
+            if p["dance"] <= 0:
+                self.burst(p["x"] + PW / 2, GROUND - PH, GOLD, 14, 160)
+            return
+        if pressed:
+            p["taps"] = p["taps"] + 1 if p["tap_gap"] <= DANCE_GAP else 1
+            p["tap_gap"] = 0.0
+            if p["taps"] >= DANCE_PRESSES:
+                p["taps"], p["dance"] = 0, DANCE_TIME
+                self.play("hat")
+
     def difficulty(self):
         d = min(1.0, self.t / 120)  # ramps over roughly 2 minutes
         return 38 + d * 70 + random.random() * 14, 1.9 - d * 1.15
@@ -841,6 +867,7 @@ class Game:
         if p["blink"] < -3 - random.random() * 3:
             p["blink"] = 0.12
 
+        self.dance_check(dt, controls)
         if self.mode != "play":
             return
         self.t += dt
@@ -1284,13 +1311,24 @@ class Game:
             c.blit(rot, rot.get_rect(center=(b["x"] + s / 2 + ox, b["y"] + s / 2 + oy)))
 
         p = self.p
-        if self.mode == "title":
+        if self.mode == "title" and not p["dance"] > 0:
             p["y"] = GROUND - PH - abs(math.sin(now / 300)) * 18
         frame = 0 if not p["on_ground"] or not p["vx"] else 1 + int(p["walk"] / 18) % 2
+        hop = sway = 0
+        if p["dance"] > 0:
+            p["y"] = GROUND - PH
+            into = DANCE_TIME - p["dance"]
+            beat, phase = divmod(into / DANCE_BEAT, 1)
+            beat = int(beat)
+            frame = 1 + beat % 2  # step side to side
+            hop = -abs(math.sin(phase * math.pi)) * (16 if p["dance"] < DANCE_BEAT * 2 else 7)
+            sway = (3 if beat % 2 else -3)
         sprite = self.sprites[(frame, p["blink"] > 0)]
         squash = -0.12 if p["slam"] else (-0.05 if not p["on_ground"] else 0)
         if squash:
             sprite = pygame.transform.scale(sprite, (int(PW * (1 + squash)), int(PH * (1 - squash))))
+        if p["dance"] > 0:
+            sprite = pygame.transform.rotate(sprite, 12 if beat % 2 else -12)  # wiggle with the beat
         for gx, gy, life in self.ghosts:
             ghost = self.sprites[(0, False)].copy()
             ghost.set_alpha(int(255 * life / 0.18 * 0.4))
@@ -1304,7 +1342,7 @@ class Game:
         shadow = pygame.Surface((PW - 12, 4), pygame.SRCALPHA)
         shadow.fill((*NIGHT, 64))
         c.blit(shadow, (p["x"] + 6 + ox, GROUND - 2 + oy))
-        body = sprite.get_rect(midbottom=(round(p["x"] + PW / 2) + ox, round(p["y"] + PH) + oy))
+        body = sprite.get_rect(midbottom=(round(p["x"] + PW / 2 + sway) + ox, round(p["y"] + PH + hop) + oy))
         clawd = [(sprite, body)]
         hat = self.viewing if self.mode == "title" else self.worn
         if hat >= 0:
