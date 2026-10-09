@@ -147,7 +147,7 @@ config = {
     xtermjs : "{{cookiecutter.xtermjs}}" ,
     _sdl2 : "canvas",
     user_canvas : 0,
-    user_canvas_managed : 0,
+    user_canvas_managed : 1,  // the page fits the canvas itself, see fit_game()
     gui_divider : 2,
     ume_block : {{cookiecutter.ume_block}},
     can_close : {{cookiecutter.can_close}},
@@ -391,6 +391,19 @@ frameborder="1"
     </div>
 
     <script type="application/javascript">
+
+    // Fit the game to the screen at its own shape. pygbag's version measures only once, sometimes
+    // before the game has set its size, which squashed it.
+    function fit_game() {
+        const c = document.getElementById("canvas")
+        if (c.width <= 1) return
+        const scale = Math.min(window.innerWidth / c.width, window.innerHeight / c.height)
+        c.style.width = Math.floor(c.width * scale) + "px"
+        c.style.height = Math.floor(c.height * scale) + "px"
+        c.style.margin = "auto"
+    }
+    setInterval(fit_game, 300)
+    window.addEventListener("resize", fit_game)
 
     globalThis.__canvas_resized = (self, ecw, ech) => {
         console.warn("TODO: panda3d canvas monitor", self, ecw, ech)
