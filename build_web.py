@@ -21,7 +21,8 @@ shutil.copytree(ROOT / "sounds", STAGE / "sounds")
 
 subprocess.run([sys.executable, "-m", "pygbag", "--build", "--ume_block", "1", "--title", "Block Catch",
                 "--template", str(ROOT / "web.tmpl"), str(STAGE)], check=True)
-shutil.copy(ROOT / "apple-touch-icon.png", SITE)  # home screen icon on phones
+for name in ("apple-touch-icon.png", "icon-192.png", "icon-512.png", "manifest.webmanifest"):
+    shutil.copy(ROOT / name, SITE)  # home screen icons, and the app details Android uses
 print(f"\nweb build ready: {SITE}")
 
 if "--serve" in sys.argv:

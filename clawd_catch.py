@@ -144,6 +144,8 @@ SPEAKERS = [
     ["...X......", "..XX......", "XXXX..X...", "XXXX..X...", "XXXX..X...", "..XX......", "...X......"],
     ["...X......", "..XX......", "XXXX.X.X..", "XXXX..X...", "XXXX.X.X..", "..XX......", "...X......"],
 ]
+SHARE = ["...X...", "..XXX..", ".X.X.X.", "...X...", "XX.X.XX", "X.....X", "X.....X", "XXXXXXX"]  # iPhone share
+MENU = ["X", ".", "X", ".", "X"]  # Android Chrome's menu (three dots)
 MAGNET = ["TT...TT", "TT...TT", "XX...XX", "XX...XX", "XXX.XXX", ".XXXXX.", "..XXX.."]
 
 
@@ -414,6 +416,14 @@ class Game:
         except (OSError, ValueError, AttributeError, TypeError):
             pass
         self.viewing = self.worn  # hat shown in the title screen picker
+        self.on_home_screen = False  # opened from a home screen icon: no need for the how-to
+        if WEB:
+            try:
+                platform.window.eval("window.bc_home = (matchMedia('(display-mode: standalone)').matches"
+                                     " || navigator.standalone === true) ? 'yes' : 'no'")
+                self.on_home_screen = str(platform.window.bc_home) == "yes"
+            except Exception:
+                pass
         self.sound = 0  # index into SOUND_MODES
         try:
             self.sound = int(load_save(SETTINGS_FILE).get("sound", 0)) % len(SOUND_MODES)
@@ -477,7 +487,7 @@ class Game:
         self.mode = "over"
 
     def reset(self, mode):
-        self.mode = mode  # title | help | board | play | paused | entry | over
+        self.mode = mode  # title | help | board | home | play | paused | entry | over
         self.t = 0.0
         self.score = 0
         self.lives = 3
@@ -1194,6 +1204,32 @@ class Game:
         self.pixel_sprite(SPEED, 64, y - 7, 3, SPEED_COLOR)
         self.text("run faster for a while", 96, y, 10, DIM, "left")
 
+    def draw_home_help(self):
+        """How to put the game on a phone's home screen, so it opens full screen like an app."""
+        self.text("ADD TO HOME SCREEN", W / 2, 70, 18, GOLD)
+        self.text("open it full screen, like an app", W / 2, 94, 10, DIM)
+        y = 134
+        for title, steps, note in (
+            ("IPHONE  (SAFARI)", [("tap the share button", SHARE), ("scroll down, tap ADD TO HOME SCREEN", None),
+                                 ("tap ADD", None)], "no share button? tap ... first"),
+            ("ANDROID  (CHROME)", [("tap the menu at the top right", MENU), ("tap ADD TO HOME SCREEN", None),
+                                  ("or INSTALL APP, then tap ADD", None)], None),
+        ):
+            self.text(title, 40, y, 12, CLAWD, "left")
+            y += 26
+            for i, (step, icon) in enumerate(steps):
+                self.text(f"{i + 1}.", 52, y, 11, GOLD, "left")
+                self.text(step, 74, y, 10, INK, "left")
+                if icon:
+                    x = 74 + self.font(10).size(step)[0] + 10
+                    self.pixel_sprite(icon, x, y - len(icon) * 3 // 2, 3, GOLD)
+                y += 24
+            if note:
+                self.text(note, 74, y - 4, 9, DIM, "left")
+                y += 18
+            y += 18
+        self.text("then open Block Catch from your home screen", W / 2, y + 4, 10, DIM)
+
     def draw(self, now):
         c = self.canvas
         c.fill(PANEL)
@@ -1382,13 +1418,16 @@ class Game:
             c.blit(veil, (0, 0))
             blink_on = int(now / 500) % 2 == 0
             if self.mode == "title":
-                self.text("BLOCK", W / 2, 170, 52, CLAWD)
-                self.text("CATCH", W / 2, 222, 52, INK)
-                self.text("hit the blocks before they land", W / 2, 272, 12, DIM)
+                up = 36 if TOUCH else 0
+                self.text("BLOCK", W / 2, 170 - up, 52, CLAWD)
+                self.text("CATCH", W / 2, 222 - up, 52, INK)
+                self.text("hit the blocks before they land", W / 2, 272 - up, 12, DIM)
                 if TOUCH:
-                    self.button("PLAY", W / 2, 318, 150, 44, self.start, 18, CLAWD)
-                    self.button("HOW TO PLAY", W / 2 - 92, 366, 170, 32, self.go("help"), 10)
-                    self.button("HIGH SCORES", W / 2 + 92, 366, 170, 32, self.show_board, 10)
+                    self.button("PLAY", W / 2, 282, 150, 44, self.start, 18, CLAWD)
+                    self.button("HOW TO PLAY", W / 2 - 92, 328, 170, 30, self.go("help"), 10)
+                    self.button("HIGH SCORES", W / 2 + 92, 328, 170, 30, self.show_board, 10)
+                    if not self.on_home_screen:
+                        self.button("ADD TO HOME SCREEN", W / 2, 366, 354, 30, self.go("home"), 10, GOLD)
                 else:
                     if blink_on:
                         self.text("PRESS SPACE", W / 2, 330, 16, INK)
@@ -1408,6 +1447,9 @@ class Game:
                     self.text(f"<  {name}  >", W / 2, 398, 11, col)
                     self.text(f"HATS {len(self.unlocked)}/{len(HATS)}", W / 2, 414, 9, DIM)
                 c.blits(clawd)  # Clawd stays bright on the title so the hat picker is easy to see
+            elif self.mode == "home":
+                self.draw_home_help()
+                self.button("BACK", W / 2, 454, 140, 34, self.go("title"), 12, DIM)
             elif self.mode == "help":
                 self.draw_help()
                 if TOUCH:
