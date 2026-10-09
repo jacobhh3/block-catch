@@ -1,10 +1,10 @@
-"""Builds qr-code.png: a QR code that opens the phone version, with Clawd in the middle and the name underneath.
+"""Builds qr-code.png: a QR code that opens the phone version, with Clawd in the middle.
 
     .venv\\Scripts\\pip install "qrcode[pil]"     (once)
     .venv\\Scripts\\python make_qr.py
 """
 import qrcode
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
 from clawd_catch import BODY, CLAWD, LEGS, NIGHT
 
@@ -30,13 +30,5 @@ for r, row in enumerate(rows):
             draw.rectangle((x, y, x + px - 1, y + px - 1), fill=NIGHT if ch == "E" else CLAWD)
 code.paste(patch, ((size - patch.width) // 2, (size - patch.height) // 2))
 
-# name and link underneath
-font_big = ImageFont.truetype("Silkscreen-Bold.ttf", 64)
-font_small = ImageFont.truetype("Silkscreen-Bold.ttf", 22)
-out = Image.new("RGB", (size, size + 150), "white")
-out.paste(code, (0, 0))
-draw = ImageDraw.Draw(out)
-draw.text((size / 2, size + 20), "BLOCK CATCH", font=font_big, fill=CLAWD, anchor="mt")
-draw.text((size / 2, size + 104), URL.removeprefix("https://"), font=font_small, fill=NIGHT, anchor="mt")
-out.save("qr-code.png")
-print(f"qr-code.png  {out.size[0]}x{out.size[1]}")
+code.save("qr-code.png")
+print(f"qr-code.png  {code.size[0]}x{code.size[1]}")
