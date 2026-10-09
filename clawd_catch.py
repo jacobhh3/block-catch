@@ -69,7 +69,7 @@ SPEED_COLOR = (102, 214, 196)
 CLAWD = (217, 119, 87)
 EARTH = (58, 51, 70)
 GOLD = (232, 176, 75)
-BLOCK_COLORS = [GOLD, (111, 183, 168), (157, 139, 224), (224, 122, 154), (127, 166, 224)]
+BLOCK_COLORS = [(111, 183, 168), (157, 139, 224), (224, 122, 154), (127, 166, 224)]  # no gold or yellow, so gold blocks stand out
 
 # Clawd sprite, 13x9. X = body, E = eye. Legs alternate frames.
 BODY = [
