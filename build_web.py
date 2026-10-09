@@ -17,8 +17,9 @@ STAGE.mkdir(parents=True)
 shutil.copy(ROOT / "clawd_catch.py", STAGE / "main.py")  # pygbag runs main.py
 shutil.copy(ROOT / "Silkscreen-Bold.ttf", STAGE)
 shutil.copy(ROOT / "favicon-web.png", STAGE / "favicon.png")
+shutil.copytree(ROOT / "sounds", STAGE / "sounds")
 
-subprocess.run([sys.executable, "-m", "pygbag", "--build", "--ume_block", "0", "--title", "Block Catch",
+subprocess.run([sys.executable, "-m", "pygbag", "--build", "--ume_block", "1", "--title", "Block Catch",
                 "--template", str(ROOT / "web.tmpl"), str(STAGE)], check=True)
 shutil.copy(ROOT / "apple-touch-icon.png", SITE)  # home screen icon on phones
 print(f"\nweb build ready: {SITE}")

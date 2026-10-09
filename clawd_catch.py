@@ -138,6 +138,12 @@ HATS = [
 HEART = [".XX.XX.", "XXXXXXX", "XXXXXXX", ".XXXXX.", "..XXX..", "...X..."]
 BOLT = ["...XXX", "..XXX.", ".XXX..", "XXXXXX", "..XXX.", ".XXX..", "XXX...", "X....."]
 SPEED = ["XX..XX..", ".XX..XX.", "..XX..XX", ".XX..XX.", "XX..XX.."]
+# speaker icons for the sound button, one per SOUND_MODES entry
+SPEAKERS = [
+    ["...X...X..", "..XX....X.", "XXXX..X..X", "XXXX..X..X", "XXXX..X..X", "..XX....X.", "...X...X.."],
+    ["...X......", "..XX......", "XXXX..X...", "XXXX..X...", "XXXX..X...", "..XX......", "...X......"],
+    ["...X......", "..XX......", "XXXX.X.X..", "XXXX..X...", "XXXX.X.X..", "..XX......", "...X......"],
+]
 MAGNET = ["TT...TT", "TT...TT", "XX...XX", "XX...XX", "XXX.XXX", ".XXXXX.", "..XXX.."]
 
 
@@ -154,6 +160,9 @@ SAVE_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "Cla
 SCORES_FILE = os.path.join(SAVE_DIR, "scores.json")
 OLD_BEST_FILE = os.path.join(SAVE_DIR, "best.txt")
 HATS_FILE = os.path.join(SAVE_DIR, "hats.json")
+SETTINGS_FILE = os.path.join(SAVE_DIR, "settings.json")
+SOUND_MODES = ["ON", "EFFECTS ONLY", "OFF"]  # M key / speaker button cycles through these
+MUSIC_VOLUME = {"play": 0.45, "paused": 0.0}  # every other screen: 0.2
 TOP_N = 10
 NAME_LEN = 10
 
@@ -378,6 +387,8 @@ def make_clawd(frame, blink):
 
 class Game:
     def __init__(self):
+        if not WEB:
+            pygame.mixer.pre_init(22050, -16, 1, 512)  # small buffer, so sounds play without delay
         pygame.init()
         pygame.display.set_caption("Block Catch")
         icon = pygame.Surface((64, 64), pygame.SRCALPHA)
@@ -403,6 +414,22 @@ class Game:
         except (OSError, ValueError, AttributeError, TypeError):
             pass
         self.viewing = self.worn  # hat shown in the title screen picker
+        self.sound = 0  # index into SOUND_MODES
+        try:
+            self.sound = int(load_save(SETTINGS_FILE).get("sound", 0)) % len(SOUND_MODES)
+        except (OSError, ValueError, AttributeError, TypeError):
+            pass
+        self.sfx, self.music_volume, self.notice = {}, None, None
+        try:
+            pygame.mixer.set_num_channels(16)
+            folder = resource("sounds")
+            for f in os.listdir(folder):
+                if f.endswith(".ogg") and f != "music.ogg":
+                    self.sfx[f[:-4]] = pygame.mixer.Sound(os.path.join(folder, f))
+            pygame.mixer.music.load(os.path.join(folder, "music.ogg"))
+            pygame.mixer.music.play(-1)
+        except (pygame.error, OSError):
+            pass  # no audio device or no sound files: play on silently
         self.toast = None  # "new hat" notification
         self.name = self.board.name
         self.last_key = None  # online key of the score just entered, for highlighting
@@ -433,6 +460,7 @@ class Game:
 
     def game_over(self):
         self.last_key = None
+        self.play("gameover")
         if self.qualifies():
             self.mode = "entry"
             self.entry_ready = pygame.time.get_ticks() + 500  # ignore keys still held from play
@@ -494,6 +522,33 @@ class Game:
     def erase_letter(self):
         self.name = self.name[:-1]
 
+    # ---------- sound ----------
+    def play(self, name):
+        if self.sound < 2 and name in self.sfx:
+            self.sfx[name].play()
+
+    def update_music(self):
+        """Music is full while playing, softer on the menus, silent while paused."""
+        vol = 0.0 if self.sound else MUSIC_VOLUME.get(self.mode, 0.2)
+        if vol != self.music_volume:
+            self.music_volume = vol
+            try:
+                pygame.mixer.music.set_volume(vol)
+            except pygame.error:
+                pass
+
+    def toggle_sound(self):
+        self.sound = (self.sound + 1) % len(SOUND_MODES)
+        try:
+            write_save(SETTINGS_FILE, dict(sound=self.sound))
+        except OSError:
+            pass
+        self.notice = dict(txt="SOUND " + SOUND_MODES[self.sound], life=1.4)
+
+    def sound_button(self, x, y):
+        self.button("", x, y, 44, 32, self.toggle_sound, color=DIM)
+        self.pixel_sprite(SPEAKERS[self.sound], x - 15, y - 10, 3, DIM)
+
     # ---------- touch ----------
     def pad_at(self, pos):
         return next((name for name, r in self.pad.items() if pos and r.collidepoint(pos)), None)
@@ -525,6 +580,7 @@ class Game:
                 return
             for r, action in self.buttons:
                 if r.collidepoint(pos):
+                    self.play("click")
                     action()
                     break
 
@@ -539,6 +595,7 @@ class Game:
             p["vx"] = d * DASH_SPEED
             if not p["on_ground"]:
                 p["vy"] = min(p["vy"], 0.0)
+            self.play("dash")
             self.burst(p["x"] + PW / 2 - d * PW / 2, p["y"] + PH - 4, DIM, 6, 90)
             self.last_tap = (0, -1.0)
         else:
@@ -562,6 +619,7 @@ class Game:
                 self.unlocked.add(i)
                 self.save_hats()
                 self.toast = dict(hat=i, life=TOAST_TIME)
+                self.play("hat")
 
     def pick_hat(self, d):
         """Title screen: cycle through no hat and every hat. Locked ones can be looked at but not worn."""
@@ -591,7 +649,7 @@ class Game:
                                 c=random.choice(BLOCK_COLORS), rot=0.0, spin=(random.random() - 0.5) * 70,
                                 dead=False))
 
-    def hit_block(self, b, air=False, value=1):
+    def hit_block(self, b, air=False, value=1, quiet=False):
         """Score a destroyed block: combo multiplier, air chain bonus, and pickup drops."""
         b["dead"] = True
         self.streak += 1
@@ -606,6 +664,9 @@ class Game:
                 self.pops.append(dict(x=bx, y=by - 26, life=0.9, txt=f"AIR x{self.p['chain']}",
                                       c=(111, 183, 168), size=11))
         self.score += pts
+        if not quiet:  # a slam's shockwave plays one big sound instead
+            chain = air and self.p["chain"] >= 2
+            self.play("gold" if value == GOLD_POINTS else "air" if chain else f"hit{self.multiplier}")
         if self.hits % BOLT_EVERY == 0:
             self.queue_pickup("bolts")
         if self.hits % MAGNET_EVERY == 0:
@@ -614,6 +675,7 @@ class Game:
         self.pops.append(dict(x=bx, y=b["y"], life=0.8, txt=f"+{pts}", c=INK if pts == 1 else GOLD, size=16))
         if self.streak % COMBO_STEP == 0 and self.multiplier > 1 and self.streak <= COMBO_STEP * (MAX_MULT - 1):
             self.pops.append(dict(x=W / 2, y=140, life=1.4, txt=f"COMBO x{self.multiplier}", c=GOLD, size=18))
+            self.play("combo")
         if self.streak % HEART_STREAK == 0:
             self.queue_pickup("hearts")
             self.pops.append(dict(x=W / 2, y=110, life=1.6, txt=f"{self.streak} IN A ROW", c=GOLD))
@@ -627,6 +689,7 @@ class Game:
     def explode(self, b):
         """Clawd touched a bomb."""
         b["dead"] = True
+        self.play("boom")
         bx, by = b["x"] + b["s"] / 2, b["y"] + b["s"] / 2
         self.burst(bx, by, BOMB_RED, 24, 280)
         self.burst(bx, by, GOLD, 14, 220)
@@ -641,6 +704,7 @@ class Game:
     def fizzle(self, b):
         """A bomb that lands or gets slammed just puffs out."""
         b["dead"] = True
+        self.play("fizzle")
         bx = b["x"] + b["s"] / 2
         self.burst(bx, min(b["y"] + b["s"] / 2, GROUND - 4), (90, 82, 102), 10, 90)
         self.dust.append(dict(x=bx, y=GROUND - 6, vx=0.0, r=6.0, life=0.8))
@@ -648,6 +712,7 @@ class Game:
     def shockwave(self):
         """Landing a slam blasts blocks near the ground around Clawd."""
         cx = self.p["x"] + PW / 2
+        self.play("shock")
         # chunks of ground kicked up and thrown out to both sides
         for _ in range(36):
             side = random.choice((-1, 1))
@@ -662,7 +727,7 @@ class Game:
                 if b.get("bomb"):
                     self.fizzle(b)
                 else:
-                    self.hit_block(b)
+                    self.hit_block(b, quiet=True)
         self.blocks = [b for b in self.blocks if not b["dead"]]
 
     def burst(self, x, y, color, n, power, size=3):
@@ -674,6 +739,7 @@ class Game:
 
     def crash(self, x, color):
         """A block hitting the ground: debris, a shockwave ring and a dust cloud."""
+        self.play("crash")
         self.burst(x, GROUND - 4, color, 18, 180)
         self.burst(x, GROUND - 4, color, 5, 140, size=6)  # a few big chunks
         self.burst(x, GROUND - 4, (90, 82, 102), 8, 120)
@@ -689,6 +755,7 @@ class Game:
 
     def zap(self):
         """Lightning: destroy the blocks closest to the ground."""
+        self.play("zap")
         safe = [b for b in self.blocks if not b.get("bomb")]
         targets = sorted(safe, key=lambda b: -(b["y"] + b["s"]))[:self.bolt_power]
         if targets and self.bolt_power > BOLT_KILLS:
@@ -725,6 +792,10 @@ class Game:
                 q["vy"] *= -0.3
                 q["vx"] *= 0.7
         self.parts = [q for q in self.parts if q["life"] > 0]
+        if self.notice:
+            self.notice["life"] -= dt
+            if self.notice["life"] <= 0:
+                self.notice = None
         if self.toast:
             self.toast["life"] -= dt
             if self.toast["life"] <= 0:
@@ -795,9 +866,11 @@ class Game:
         wall = -1 if p["x"] <= 2 else (1 if p["x"] >= W - PW - 2 else 0)
         if jump and p["on_ground"]:
             p["vy"], p["on_ground"], p["slam"] = -640, False, False
+            self.play("jump")
         elif pressed and wall and not p["on_ground"]:
             # wall jump: kick off the screen edge, up and away
             p["vy"], p["vx"], p["slam"] = -WALL_JUMP, -wall * WALL_KICK, False
+            self.play("walljump")
             p["dash"] = 0.0
             wx = 0 if wall < 0 else W
             for _ in range(10):
@@ -817,6 +890,7 @@ class Game:
         if down and not p["on_ground"] and not p["slam"]:
             p["slam"] = True
             p["vy"] = max(p["vy"], 820)
+            self.play("slam")
 
         p["vy"] += 1500 * dt
         p["x"] += p["vx"] * dt
@@ -844,6 +918,7 @@ class Game:
             d = random.choice((-1, 1))
             self.runners.append(dict(d=d, x=-20.0 if d > 0 else W + 2.0, y=random.uniform(*GOLD_HEIGHT),
                                      v=random.uniform(*GOLD_SPEED), s=18, warn=GOLD_WARN, rot=0.0, emit=0.0))
+            self.play("warn")
         for r in self.runners:
             if r["warn"] > 0:
                 r["warn"] -= dt
@@ -917,6 +992,7 @@ class Game:
             if hx - 10 < p["x"] + PW - 4 and hx + 10 > p["x"] + 4 and h["y"] - 9 < p["y"] + PH - 6 and h["y"] + 9 > p["y"]:
                 h["dead"] = True
                 self.burst(hx, h["y"], CLAWD, 20, 200)
+                self.play("heart")
                 if self.lives < MAX_LIVES:
                     self.lives += 1
                     self.pops.append(dict(x=hx, y=h["y"] - 10, life=1.0, txt="+1 LIFE", c=CLAWD))
@@ -950,6 +1026,7 @@ class Game:
             if mx - 11 < p["x"] + PW - 4 and mx + 11 > p["x"] + 4 and m["y"] - 11 < p["y"] + PH - 6 and m["y"] + 11 > p["y"]:
                 m["dead"] = True
                 self.magnet = MAGNET_TIME
+                self.play("magnet")
                 self.burst(mx, m["y"], MAGNET_COLOR, 18, 200)
                 self.rings.append(dict(x=pcx, y=p["y"] + PH / 2, r=8.0, life=0.4, c=MAGNET_COLOR))
                 self.pops.append(dict(x=mx, y=m["y"] - 14, life=1.0, txt="MAGNET", c=MAGNET_COLOR, size=14))
@@ -979,6 +1056,7 @@ class Game:
             if ox - 12 < p["x"] + PW - 4 and ox + 12 > p["x"] + 4 and o["y"] - 9 < p["y"] + PH - 6 and o["y"] + 9 > p["y"]:
                 o["dead"] = True
                 self.speed = SPEED_TIME
+                self.play("speed")
                 self.burst(ox, o["y"], SPEED_COLOR, 18, 200)
                 self.rings.append(dict(x=pcx, y=p["y"] + PH / 2, r=8.0, life=0.4, c=SPEED_COLOR))
                 self.pops.append(dict(x=ox, y=o["y"] - 14, life=1.0, txt="SPEED", c=SPEED_COLOR, size=14))
@@ -1314,7 +1392,7 @@ class Game:
                 else:
                     if blink_on:
                         self.text("PRESS SPACE", W / 2, 330, 16, INK)
-                    self.text("I  HOW TO PLAY     H  HIGH SCORES", W / 2, 362, 10, DIM)
+                    self.text("I  HELP     H  SCORES     M  SOUND", W / 2, 362, 10, DIM)
                 if self.viewing == -1:
                     name, col = "NO HAT", DIM
                 elif self.viewing in self.unlocked:
@@ -1373,8 +1451,12 @@ class Game:
                         self.text("SPACE TO PLAY AGAIN", W / 2, 420, 13, DIM)
                     self.text("ESC  MAIN MENU", W / 2, 440, 10, DIM)
 
-        if TOUCH and self.mode == "play":
-            self.button("II", W / 2, 26, 40, 32, self.go("paused"), 12, DIM)
+        if TOUCH and self.mode != "entry":
+            if self.mode == "play":
+                self.button("II", W / 2 - 24, 26, 40, 32, self.go("paused"), 12, DIM)
+            self.sound_button(W / 2 + 24 if self.mode == "play" else W / 2, 26)
+        if self.notice:
+            self.text(self.notice["txt"], W / 2, 64, 12, INK)
 
         if self.toast:
             t = self.toast
@@ -1433,6 +1515,9 @@ class Game:
                             self.submit_name()
                     continue
                 if e.type == pygame.KEYDOWN:
+                    if e.key == pygame.K_m:
+                        self.toggle_sound()
+                        continue
                     if e.key == pygame.K_h and self.mode in ("title", "over"):
                         self.last_key = None
                         self.board.refresh()
@@ -1465,6 +1550,7 @@ class Game:
                         else:
                             self.reset("play")
             self.update(dt, self.controls())
+            self.update_music()
             self.draw(pygame.time.get_ticks())
             await asyncio.sleep(0)  # lets the browser run between frames
 

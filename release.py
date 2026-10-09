@@ -1,4 +1,4 @@
-"""Releases a new version of Block Catch, for PC and phones, in one go.
+r"""Releases a new version of Block Catch, for PC and phones, in one go.
 
     .venv\Scripts\python release.py "what changed"
 

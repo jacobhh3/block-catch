@@ -5,7 +5,7 @@ a = Analysis(
     ['clawd_catch.py'],
     pathex=[],
     binaries=[],
-    datas=[('Silkscreen-Bold.ttf', '.')],
+    datas=[('Silkscreen-Bold.ttf', '.'), ('sounds', 'sounds')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
