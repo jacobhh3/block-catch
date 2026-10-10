@@ -5,3 +5,4 @@ __pycache__/
 *.log
 relay/.wrangler/
 relay/node_modules/
+version.txt

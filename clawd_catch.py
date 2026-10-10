@@ -164,11 +164,29 @@ def resource(name):
     return os.path.join(base, name)
 
 
+def read_build():
+    """This build's "commit-time commit-id", stamped in by build_web.py / release.py; empty when run from source."""
+    try:
+        with open(resource("version.txt"), encoding="utf-8") as fh:
+            return fh.read().strip()
+    except OSError:
+        return ""
+
+
+def build_time(stamp):
+    try:
+        return int(stamp.split()[0])
+    except (ValueError, IndexError):
+        return 0
+
+
 SAVE_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "ClawdCatch")  # old name kept so existing scores and hats carry over
 SCORES_FILE = os.path.join(SAVE_DIR, "scores.json")
 OLD_BEST_FILE = os.path.join(SAVE_DIR, "best.txt")
 HATS_FILE = os.path.join(SAVE_DIR, "hats.json")
 SETTINGS_FILE = os.path.join(SAVE_DIR, "settings.json")
+SITE_URL = "https://jacobhh3.github.io/block-catch/"
+VERSION_CHECK = 300  # seconds between checks for a newer build on the website
 SOUND_MODES = ["ON", "EFFECTS ONLY", "OFF"]  # M key / speaker button cycles through these
 MUSIC_VOLUME = {"play": 0.45, "paused": 0.0}  # every other screen: 0.2
 TOP_N = 10
@@ -220,6 +238,10 @@ window.bc_get = function (id, url) {
     fetch(url, {cache: "no-store"}).then(r => r.text())
         .then(t => { window.bc_net[id] = "1" + t; })
         .catch(e => { window.bc_net[id] = "0" + e; });
+};
+window.bc_update = function () {
+    var files = ["block-catch.apk", "index.html"];
+    Promise.all(files.map(u => fetch(u, {cache: "reload"}).catch(() => 0))).then(() => location.reload());
 };
 window.bc_take = function (id) {
     var v = window.bc_net[id] || "";
@@ -452,6 +474,7 @@ class Game:
         self.pointers = {}  # touch fingers (and the mouse) currently down: id -> (x, y)
         self.buttons = []  # tappable menu buttons drawn this frame: (rect, action)
         self.pad = {name: pygame.Rect(x, H + 16, w, PAD - 32) for name, x, w in PAD_KEYS}
+        self.build, self.update_ready, self.check_in = read_build(), False, 0.0
         self.stars = [((i * 97) % W, (i * 53) % 420, 2 if i % 3 == 0 else 1, i) for i in range(40)]
         self.reset("title")
 
@@ -548,6 +571,30 @@ class Game:
 
     def erase_letter(self):
         self.name = self.name[:-1]
+
+    # ---------- updates ----------
+    def check_version(self):
+        """Asks the website which build is live; a newer one shows the update banner on the main menu."""
+        if not self.build or self.update_ready:
+            return
+
+        async def check():
+            try:
+                live = await self.board._get(f"{SITE_URL}version.txt?t={random.randrange(10 ** 9)}")
+            except Exception:
+                return  # offline: try again next time
+            if build_time(live) > build_time(self.build):
+                self.update_ready = True
+
+        if WEB:
+            asyncio.ensure_future(check())
+        else:
+            threading.Thread(target=lambda: asyncio.run(check()), daemon=True).start()
+
+    def update_now(self):
+        if WEB:
+            self.notice = dict(txt="UPDATING", life=10)
+            platform.window.bc_update()
 
     # ---------- sound ----------
     def play(self, name):
@@ -878,6 +925,10 @@ class Game:
             p["blink"] = 0.12
 
         self.dance_check(dt, controls)
+        self.check_in -= dt
+        if self.check_in <= 0:
+            self.check_in = VERSION_CHECK
+            self.check_version()
         self.wake = max(0.0, self.wake - dt)
         if self.mode == "resume":
             before = math.ceil(self.countdown)
@@ -1500,6 +1551,11 @@ class Game:
                     if blink_on:
                         self.text("PRESS SPACE", W / 2, 330, 16, INK)
                     self.text("I  HELP     H  SCORES     M  SOUND", W / 2, 362, 10, DIM)
+                if self.update_ready:
+                    if TOUCH:
+                        self.button("NEW VERSION  TAP TO UPDATE", W / 2, 80, 300, 28, self.update_now, 10, GOLD)
+                    else:
+                        self.text("A NEW VERSION IS OUT", W / 2, 80, 11, GOLD)
                 if self.viewing == -1:
                     name, col = "NO HAT", DIM
                 elif self.viewing in self.unlocked:

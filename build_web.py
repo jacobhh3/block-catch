@@ -18,11 +18,14 @@ shutil.copy(ROOT / "clawd_catch.py", STAGE / "main.py")  # pygbag runs main.py
 shutil.copy(ROOT / "Silkscreen-Bold.ttf", STAGE)
 shutil.copy(ROOT / "favicon-web.png", STAGE / "favicon.png")
 shutil.copytree(ROOT / "sounds", STAGE / "sounds")
+stamp = subprocess.run(["git", "log", "-1", "--format=%ct %h"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
+(STAGE / "version.txt").write_text(stamp)  # the game compares this with the website's copy
 
 subprocess.run([sys.executable, "-m", "pygbag", "--build", "--ume_block", "1", "--title", "Block Catch",
                 "--template", str(ROOT / "web.tmpl"), str(STAGE)], check=True)
 for name in ("apple-touch-icon.png", "icon-192.png", "icon-512.png", "manifest.webmanifest"):
     shutil.copy(ROOT / name, SITE)  # home screen icons, and the app details Android uses
+shutil.copy(STAGE / "version.txt", SITE)  # which build is live, for the in-game update check
 print(f"\nweb build ready: {SITE}")
 
 if "--serve" in sys.argv:
