@@ -180,6 +180,18 @@ def build_time(stamp):
         return 0
 
 
+def build_label(stamp):
+    """Short version text for the main menu, like "VERSION 78165AA"; "DEV" when run from source."""
+    return f"VERSION {stamp.split()[-1].upper()}" if build_time(stamp) else "VERSION DEV"
+
+
+def rainbow(t):
+    """A bright color that cycles through the rainbow as t goes from 0 to 1 (and wraps)."""
+    c = pygame.Color(0)
+    c.hsva = (t % 1 * 360, 65, 100, 100)
+    return c[:3]
+
+
 SAVE_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "ClawdCatch")  # old name kept so existing scores and hats carry over
 SCORES_FILE = os.path.join(SAVE_DIR, "scores.json")
 OLD_BEST_FILE = os.path.join(SAVE_DIR, "best.txt")
@@ -240,7 +252,7 @@ window.bc_get = function (id, url) {
         .catch(e => { window.bc_net[id] = "0" + e; });
 };
 window.bc_update = function () {
-    var files = ["block-catch.apk", "index.html"];
+    var files = ["block-catch.tar.gz", "block-catch.apk", "index.html", location.pathname];
     Promise.all(files.map(u => fetch(u, {cache: "reload"}).catch(() => 0))).then(() => location.reload());
 };
 window.bc_take = function (id) {
@@ -1197,6 +1209,25 @@ class Game:
         self.text(label, x, y, size, color, surf=surf)
         self.buttons.append((r, action))
 
+    def rainbow_button(self, label, x, y, w, h, action, size, now):
+        """A button whose border and letters shimmer through the rainbow."""
+        r = pygame.Rect(0, 0, w, h)
+        r.center = (x, y)
+        down = any(r.collidepoint(pos) for pos in self.pointers.values())
+        self.canvas.fill(EARTH if down else NIGHT, r)
+        shift = now / 1500
+        pygame.draw.rect(self.canvas, rainbow(shift), r, 2)
+        self.rainbow_text(label, x, y, size, shift)
+        self.buttons.append((r, action))
+
+    def rainbow_text(self, label, x, y, size, shift):
+        f = self.font(size)
+        lx = x - f.size(label)[0] / 2
+        for i, ch in enumerate(label):
+            w = f.size(ch)[0]
+            self.text(ch, lx + w / 2, y, size, rainbow(shift - i / 18))
+            lx += w
+
     def draw_pad(self):
         """The touch controls under the game, or a keyboard while typing a name."""
         s = self.screen
@@ -1553,9 +1584,10 @@ class Game:
                     self.text("I  HELP     H  SCORES     M  SOUND", W / 2, 362, 10, DIM)
                 if self.update_ready:
                     if TOUCH:
-                        self.button("NEW VERSION  TAP TO UPDATE", W / 2, 80, 300, 28, self.update_now, 10, GOLD)
+                        self.rainbow_button("NEW VERSION  TAP TO UPDATE", W / 2, 80, 300, 28, self.update_now, 10, now)
                     else:
-                        self.text("A NEW VERSION IS OUT", W / 2, 80, 11, GOLD)
+                        self.rainbow_text("A NEW VERSION IS OUT", W / 2, 80, 11, now / 1500)
+                self.text(build_label(self.build), W - 8, H - 10, 8, DIM, "right")
                 if self.viewing == -1:
                     name, col = "NO HAT", DIM
                 elif self.viewing in self.unlocked:
