@@ -95,6 +95,23 @@ LEGS = [
 PX = 4
 PW, PH = 13 * PX, 9 * PX
 
+# Clawd's colors, picked on the main menu. Each one is unlocked by a challenge (see Game.unlock_color).
+# A color is one RGB, or a list of them for a speckled look.
+PURPLE = BLOCK_COLORS[1]
+SKINS = [
+    ("CLAWD", CLAWD, None),
+    ("AIRTIME RICKY", (238, 236, 232), "air"),
+    ("OCD TRISTEN", (150, 104, 222), "purple"),
+    ("RAGING RYAN", (222, 58, 58), "bombs"),
+    ("LIGHTNING NICK", (246, 210, 72), "zaps"),
+    ("EARTH BENDER BEN", [(122, 112, 124), (122, 112, 124), (96, 86, 102), (150, 140, 144), (82, 73, 98)], "landings"),
+]
+AIR_STREAK = 10  # blocks broken in a row without touching the ground (lightning doesn't count)
+PURPLE_GOAL = 50  # purple blocks broken in one game
+BOMB_GOAL = 3  # bombs touched in one game
+ZAP_GOAL = 100  # lightning bolts caught, over all games
+LANDING_GOAL = 1000  # landings on the ground, over all games
+
 # Hats, unlocked by reaching a streak. Drawn 13 wide like Clawd and sat on top of his head.
 HAT_COLORS = {
     # pinks
@@ -196,6 +213,7 @@ SAVE_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "Cla
 SCORES_FILE = os.path.join(SAVE_DIR, "scores.json")
 OLD_BEST_FILE = os.path.join(SAVE_DIR, "best.txt")
 HATS_FILE = os.path.join(SAVE_DIR, "hats.json")
+COLORS_FILE = os.path.join(SAVE_DIR, "colors.json")
 SETTINGS_FILE = os.path.join(SAVE_DIR, "settings.json")
 SITE_URL = "https://jacobhh3.github.io/block-catch/"
 VERSION_CHECK = 300  # seconds between checks for a newer build on the website
@@ -413,18 +431,26 @@ def make_hat(rows, color=None, px=PX):
     return surf
 
 
-def make_clawd(frame, blink):
-    surf = pygame.Surface((PW, PH), pygame.SRCALPHA)
+def make_clawd(frame, blink, skin=CLAWD, px=PX):
+    surf = pygame.Surface((13 * px, 9 * px), pygame.SRCALPHA)
     rows = BODY + LEGS[frame]
     for r, row in enumerate(rows):
         for c, ch in enumerate(row):
             if ch == ".":
                 continue
-            color = CLAWD
+            # speckled skins pick a shade per pixel, the same one every time
+            body = skin if isinstance(skin, tuple) else skin[(r * 7 + c * 13 + r * c * 5) % len(skin)]
+            color = body
             if ch == "E":
-                color = (CLAWD if r == 2 else NIGHT) if blink else NIGHT
-            surf.fill(color, (c * PX, r * PX, PX, PX))
+                color = (body if r == 2 else NIGHT) if blink else NIGHT
+            surf.fill(color, (c * px, r * px, px, px))
     return surf
+
+
+def skin_color(i):
+    """One color that stands for a skin, for its name on the menu."""
+    color = SKINS[i][1]
+    return color if isinstance(color, tuple) else color[0]
 
 
 class Game:
@@ -441,7 +467,19 @@ class Game:
         self.canvas = pygame.Surface((W, H))
         self.clock = pygame.time.Clock()
         self.fonts = {}
-        self.sprites = {(f, b): make_clawd(f, b) for f in range(3) for b in (False, True)}
+        self.skin_sprites = [{(f, b): make_clawd(f, b, skin) for f in range(3) for b in (False, True)}
+                             for _, skin, _ in SKINS]
+        self.skin_icons = [make_clawd(0, False, skin, px=3) for _, skin, _ in SKINS]
+        self.skins, self.skin = {0}, 0  # unlocked color indexes, and the one Clawd wears
+        self.zaps = self.landings = 0  # progress toward the colors that count over all games
+        try:
+            data = load_save(COLORS_FILE)
+            self.skins |= {i for i in data.get("unlocked", []) if isinstance(i, int) and 0 <= i < len(SKINS)}
+            self.skin = data.get("worn", 0) if data.get("worn", 0) in self.skins else 0
+            self.zaps, self.landings = int(data.get("zaps", 0)), int(data.get("landings", 0))
+        except (OSError, ValueError, AttributeError, TypeError):
+            pass
+        self.skin_viewing = self.skin  # color shown in the title screen picker
         self.board = Leaderboard()
         self.hat_art = [make_hat(rows) for _, _, rows in HATS]
         self.hat_shadow = [a.copy() for a in self.hat_art]  # locked hats: full color, dimmed
@@ -480,7 +518,7 @@ class Game:
             pygame.mixer.music.play(-1)
         except (pygame.error, OSError):
             pass  # no audio device or no sound files: play on silently
-        self.toast = None  # "new hat" notification
+        self.toast, self.toasts = None, []  # "new hat" / "new color" notification, and ones waiting their turn
         self.name = self.board.name
         self.last_key = None  # online key of the score just entered, for highlighting
         self.pointers = {}  # touch fingers (and the mouse) currently down: id -> (x, y)
@@ -510,6 +548,7 @@ class Game:
         return self.score > 0 and (len(self.scores) < TOP_N or self.score > self.scores[-1]["score"])
 
     def game_over(self):
+        self.save_colors()
         self.last_key = None
         self.play("gameover")
         if self.qualifies():
@@ -538,6 +577,7 @@ class Game:
                       walk=0.0, blink=0.0, chain=0, jump_buffer=0.0, block_grace=0.0,
                       dash=0.0, dash_dir=0, dash_cd=0.0, dance=0.0, taps=0, tap_gap=0.0)
         self.countdown, self.wake = 0.0, 0.0  # seconds left before play resumes; "!" after waking
+        self.purples, self.bombs_hit = 0, 0  # this game's progress toward the purple and red colors
         self.last_tap = (0, -1.0)
         self.ghosts = []
         self.blocks, self.parts, self.pops = [], [], []
@@ -563,6 +603,7 @@ class Game:
         if self.mode in ("play", "resume"):
             self.mode = "paused"
             self.play("snore")
+            self.save_colors()
 
     def resume(self):
         """Leaving the pause screen: a short countdown while Clawd wakes up, then play goes on."""
@@ -725,8 +766,50 @@ class Game:
             if self.streak >= need and i not in self.unlocked:
                 self.unlocked.add(i)
                 self.save_hats()
-                self.toast = dict(hat=i, life=TOAST_TIME)
+                self.show_toast(dict(hat=i))
                 self.play("hat")
+
+    def save_colors(self):
+        try:
+            write_save(COLORS_FILE, dict(unlocked=sorted(self.skins), worn=self.skin,
+                                         zaps=self.zaps, landings=self.landings))
+        except OSError:
+            pass
+
+    def unlock_color(self, key):
+        """A color's challenge was just met: unlock it, with a notification the first time."""
+        i = next(k for k, (_, _, need) in enumerate(SKINS) if need == key)
+        if i not in self.skins:
+            self.skins.add(i)
+            self.save_colors()
+            self.show_toast(dict(color=i))
+            self.play("hat")
+
+    def show_toast(self, t):
+        t["life"] = TOAST_TIME
+        if self.toast:
+            self.toasts.append(t)
+        else:
+            self.toast = t
+
+    def color_status(self, i):
+        """The second line under a color's name on the menu: progress if it's locked."""
+        if i in self.skins:
+            return f"COLORS {len(self.skins)}/{len(SKINS)}"
+        return "LOCKED  " + {
+            "air": f"{AIR_STREAK} IN A ROW IN THE AIR",
+            "purple": f"{PURPLE_GOAL} PURPLE IN ONE GAME",
+            "bombs": f"HIT {BOMB_GOAL} BOMBS IN ONE GAME",
+            "zaps": f"CATCH {ZAP_GOAL} BOLTS  {min(self.zaps, ZAP_GOAL)}/{ZAP_GOAL}",
+            "landings": f"LAND {LANDING_GOAL} TIMES  {min(self.landings, LANDING_GOAL)}/{LANDING_GOAL}",
+        }[SKINS[i][2]]
+
+    def pick_color(self, d):
+        """Title screen: cycle through the colors. Locked ones can be looked at but not worn."""
+        self.skin_viewing = (self.skin_viewing + d) % len(SKINS)
+        if self.skin_viewing in self.skins:
+            self.skin = self.skin_viewing
+            self.save_colors()
 
     def pick_hat(self, d):
         """Title screen: cycle through no hat and every hat. Locked ones can be looked at but not worn."""
@@ -764,8 +847,14 @@ class Game:
         self.hits += 1
         pts = value * self.multiplier
         bx, by = b["x"] + b["s"] / 2, b["y"] + b["s"] / 2
+        if b["c"] == PURPLE:
+            self.purples += 1
+            if self.purples >= PURPLE_GOAL:
+                self.unlock_color("purple")
         if air:
             self.p["chain"] += 1
+            if self.p["chain"] >= AIR_STREAK:
+                self.unlock_color("air")
             if self.p["chain"] >= 2:
                 pts += self.p["chain"] - 1
                 self.pops.append(dict(x=bx, y=by - 26, life=0.9, txt=f"AIR x{self.p['chain']}",
@@ -805,6 +894,9 @@ class Game:
         self.shake = 10
         self.p["vy"] = min(self.p["vy"], -380)
         self.p["on_ground"] = False
+        self.bombs_hit += 1
+        if self.bombs_hit >= BOMB_GOAL:
+            self.unlock_color("bombs")
         self.lose_life()
 
     def fizzle(self, b):
@@ -861,12 +953,19 @@ class Game:
     def zap(self):
         """Lightning: destroy the blocks closest to the ground."""
         self.play("zap")
+        self.zaps += 1
+        if self.zaps >= ZAP_GOAL:
+            self.unlock_color("zaps")
         safe = [b for b in self.blocks if not b.get("bomb")]
         targets = sorted(safe, key=lambda b: -(b["y"] + b["s"]))[:self.bolt_power]
         if targets and self.bolt_power > BOLT_KILLS:
             self.pops.append(dict(x=W / 2, y=140, life=1.0, txt=f"ZAP x{self.bolt_power}", c=BOLT_COLOR, size=18))
         for b in targets:
             b["dead"] = True
+            if b["c"] == PURPLE:
+                self.purples += 1
+                if self.purples >= PURPLE_GOAL:
+                    self.unlock_color("purple")
             bx, by = b["x"] + b["s"] / 2, b["y"] + b["s"] / 2
             # jagged bolt from the sky down to the block
             pts, y = [(bx + random.uniform(-20, 20), -10)], -10
@@ -904,7 +1003,7 @@ class Game:
         if self.toast:
             self.toast["life"] -= dt
             if self.toast["life"] <= 0:
-                self.toast = None
+                self.toast = self.toasts.pop(0) if self.toasts else None
         for q in self.pops:
             q["life"] -= dt
             q["y"] -= 40 * dt
@@ -1022,6 +1121,10 @@ class Game:
         if p["y"] < 64:  # keep Clawd under the HUD
             p["y"], p["vy"] = 64, max(p["vy"], 0.0)
         if p["y"] >= GROUND - PH:
+            if not p["on_ground"]:
+                self.landings += 1
+                if self.landings >= LANDING_GOAL:
+                    self.unlock_color("landings")
             p["y"], p["vy"], p["on_ground"], p["chain"], p["block_grace"] = GROUND - PH, 0.0, True, 0, 0.0
         if p["on_ground"] and p["vx"]:
             p["walk"] += abs(p["vx"]) * dt
@@ -1431,7 +1534,11 @@ class Game:
             hop = -abs(math.sin(phase * math.pi)) * (16 if p["dance"] < DANCE_BEAT * 2 else 7)
             sway = (3 if beat % 2 else -3)
         asleep = self.mode in ("paused", "resume")
-        sprite = self.sprites[(frame, p["blink"] > 0 or asleep)]
+        skin = self.skin_viewing if self.mode == "title" else self.skin
+        sprite = self.skin_sprites[skin][(frame, p["blink"] > 0 or asleep)]
+        if skin not in self.skins:
+            sprite = sprite.copy()
+            sprite.fill((150, 145, 160, 255), special_flags=pygame.BLEND_RGBA_MULT)  # locked: dimmed
         squash = -0.05 if not p["on_ground"] else 0
         if asleep:
             squash = 0.04 * math.sin(now / 700)  # slow breathing
@@ -1440,7 +1547,7 @@ class Game:
         if p["dance"] > 0:
             sprite = pygame.transform.rotate(sprite, 12 if beat % 2 else -12)  # wiggle with the beat
         for gx, gy, life in self.ghosts:
-            ghost = self.sprites[(0, False)].copy()
+            ghost = self.skin_sprites[self.skin][(0, False)].copy()
             ghost.set_alpha(int(255 * life / 0.18 * 0.4))
             c.blit(ghost, (round(gx) + ox, round(gy) + oy))
         if self.magnet:
@@ -1587,7 +1694,17 @@ class Game:
                         self.rainbow_button("NEW VERSION  TAP TO UPDATE", W / 2, 80, 300, 28, self.update_now, 10, now)
                     else:
                         self.rainbow_text("A NEW VERSION IS OUT", W / 2, 80, 11, now / 1500)
-                self.text(build_label(self.build), W - 8, H - 10, 8, DIM, "right")
+                self.text(build_label(self.build), W - 16, 64, 8, DIM, "right")
+                # color picker, in the dirt under Clawd
+                cname = SKINS[self.skin_viewing][0]
+                ccol = skin_color(self.skin_viewing) if self.skin_viewing in self.skins else DIM
+                if TOUCH:
+                    self.button("<", 30, 536, 44, 36, lambda: self.pick_color(-1), 14, DIM)
+                    self.button(">", W - 30, 536, 44, 36, lambda: self.pick_color(1), 14, DIM)
+                else:
+                    cname = f"C  {cname}"
+                self.text(cname, W / 2, 528, 11, ccol)
+                self.text(self.color_status(self.skin_viewing), W / 2, 545, 9, DIM)
                 if self.viewing == -1:
                     name, col = "NO HAT", DIM
                 elif self.viewing in self.unlocked:
@@ -1671,10 +1788,13 @@ class Game:
             box.midtop = (W / 2, int(-60 + 140 * slide))
             c.fill(NIGHT, box)
             pygame.draw.rect(c, GOLD, box, 2)
-            icon = self.hat_icons[t["hat"]]
+            if "hat" in t:
+                icon, title, name = self.hat_icons[t["hat"]], "NEW HAT UNLOCKED", HATS[t["hat"]][0]
+            else:
+                icon, title, name = self.skin_icons[t["color"]], "NEW COLOR UNLOCKED", SKINS[t["color"]][0]
             c.blit(icon, icon.get_rect(center=(box.left + 34, box.centery)))
-            self.text("NEW HAT UNLOCKED", box.left + 66, box.top + 18, 11, GOLD, "left")
-            self.text(HATS[t["hat"]][0], box.left + 66, box.top + 38, 13, INK, "left")
+            self.text(title, box.left + 66, box.top + 18, 11, GOLD, "left")
+            self.text(name, box.left + 66, box.top + 38, 13, INK, "left")
 
         self.screen.blit(c, (0, 0))
         if TOUCH:
@@ -1689,6 +1809,8 @@ class Game:
             dt = min(0.033, ms / 1000)
             for e in pygame.event.get():
                 if e.type == pygame.QUIT:
+                    if self.mode in ("play", "resume", "paused"):
+                        self.save_colors()
                     return
                 if e.type in (pygame.WINDOWFOCUSLOST, pygame.WINDOWHIDDEN, pygame.WINDOWMINIMIZED):
                     self.pause()
@@ -1728,6 +1850,9 @@ class Game:
                         self.last_key = None
                         self.board.refresh()
                         self.mode = "board"
+                        continue
+                    if e.key == pygame.K_c and self.mode == "title":
+                        self.pick_color(1)
                         continue
                     if e.key == pygame.K_i and self.mode == "title":
                         self.mode = "help"
