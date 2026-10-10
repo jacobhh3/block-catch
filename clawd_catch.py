@@ -18,7 +18,7 @@ TOUCH = WEB or os.environ.get("BLOCKCATCH_TOUCH") == "1"  # on-screen buttons; t
 
 W, H, GROUND = 400, 560, 512
 PAD = 170 if TOUCH else 0  # height of the touch controls strip under the game
-PAD_KEYS = [("left", 10, 88), ("right", 104, 88), ("jump", 208, 182)]  # touch buttons: left edge and width
+PAD_KEYS = [("left", 10, 98), ("right", 114, 98), ("jump", 218, 172)]  # touch buttons: left edge and width
 KEY_ROWS = ["1234567890", "QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"]  # on-screen keyboard for the name entry
 NIGHT = (27, 26, 36)
 PANEL = (36, 34, 47)
