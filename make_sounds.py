@@ -116,10 +116,15 @@ def make_effects():
     save("jump", fade(osc(slide(260, 620, 0.12), 0.12, duty=0.5), speed=12), 0.22)
     save("walljump", mix(fade(osc(slide(360, 880, 0.11), 0.11, duty=0.25), speed=12),
                          fade(noise(0.03, 1), speed=60) * 0.5), 0.25)
-    save("slam", fade(osc(slide(900, 140, 0.18), 0.18, duty=0.25), speed=6), 0.2)
-    save("shock", mix(fade(osc(slide(120, 32, 0.4), 0.4, "sine"), speed=7), fade(noise(0.35, 8), speed=9) * 0.6), 0.65)
+    save("blockjump", mix(fade(osc(slide(330, 990, 0.14), 0.14, duty=0.25), speed=10),
+                          fade(osc(slide(660, 1320, 0.1), 0.1, duty=0.5), speed=14) * 0.4), 0.26)
     swell = np.sin(np.linspace(0, np.pi, samples(0.16)))
     save("dash", mix(noise(0.16, 1) * swell * 0.6, osc(slide(500, 1100, 0.16), 0.16, duty=0.125) * swell * 0.4), 0.22)
+    # pause and resume: a sleepy snore, countdown ticks, and a bright wake-up
+    save("snore", mix(fade(osc(slide(140, 90, 0.5), 0.5, "sine"), attack=0.15, speed=4),
+                      fade(noise(0.5, 6), attack=0.15, speed=4) * 0.3), 0.3)
+    save("tick", fade(osc(note("A5"), 0.08, duty=0.5), speed=18), 0.22)
+    save("wake", tones(["G5", "C6", "E6", "G6"], 0.035, "square", 0.5, last=0.14), 0.3)
     save("heart", tones(["C5", "E5", "G5", "C6"], 0.06, "square", 0.5, last=0.18), 0.32)
     jitter = slide(70, 40, 0.45) * (1 + 0.4 * rng.standard_normal(samples(0.45)))
     save("zap", fade(mix(osc(jitter, 0.45, "saw"), noise(0.45, 3) * 0.7), speed=6), 0.42)

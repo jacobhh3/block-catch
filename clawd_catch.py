@@ -18,7 +18,7 @@ TOUCH = WEB or os.environ.get("BLOCKCATCH_TOUCH") == "1"  # on-screen buttons; t
 
 W, H, GROUND = 400, 560, 512
 PAD = 170 if TOUCH else 0  # height of the touch controls strip under the game
-PAD_KEYS = [("left", 10), ("right", 104), ("down", 208), ("jump", 302)]  # touch buttons, left edge of each
+PAD_KEYS = [("left", 10, 88), ("right", 104, 88), ("jump", 208, 182)]  # touch buttons: left edge and width
 KEY_ROWS = ["1234567890", "QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"]  # on-screen keyboard for the name entry
 NIGHT = (27, 26, 36)
 PANEL = (36, 34, 47)
@@ -44,9 +44,11 @@ MAX_MULT = 4
 BOMB_AFTER = 15  # seconds before bombs start falling
 BOMB_RED = (232, 72, 72)
 BOMB_BODY = (16, 15, 22)
-SLAM_RADIUS = 90  # slam shockwave reach to each side of Clawd
-SLAM_REACH = 110  # how far above the ground the shockwave reaches
-DANCE_PRESSES = 4  # easter egg: press slam this many times quickly on the main menu and Clawd dances
+JUMP_SPEED = 640  # upward speed of a jump, from the ground or off a block
+BLOCK_BOUNCE = 260  # little hop when Clawd breaks a block in midair without jumping
+JUMP_WINDOW = 0.15  # seconds a jump press counts before or after breaking a block, to jump off it
+RESUME_COUNT = 3  # seconds of countdown after unpausing, while Clawd wakes up
+DANCE_PRESSES = 4  # easter egg: press jump this many times quickly on the main menu and Clawd dances
 DANCE_GAP = 0.45  # most seconds allowed between those presses
 DANCE_TIME = 2.0
 DANCE_BEAT = 0.25
@@ -449,7 +451,7 @@ class Game:
         self.last_key = None  # online key of the score just entered, for highlighting
         self.pointers = {}  # touch fingers (and the mouse) currently down: id -> (x, y)
         self.buttons = []  # tappable menu buttons drawn this frame: (rect, action)
-        self.pad = {name: pygame.Rect(x, H + 16, 88, PAD - 32) for name, x in PAD_KEYS}
+        self.pad = {name: pygame.Rect(x, H + 16, w, PAD - 32) for name, x, w in PAD_KEYS}
         self.stars = [((i * 97) % W, (i * 53) % 420, 2 if i % 3 == 0 else 1, i) for i in range(40)]
         self.reset("title")
 
@@ -491,15 +493,16 @@ class Game:
         self.mode = "over"
 
     def reset(self, mode):
-        self.mode = mode  # title | help | board | home | play | paused | entry | over
+        self.mode = mode  # title | help | board | home | play | paused | resume | entry | over
         self.t = 0.0
         self.score = 0
         self.lives = 3
         self.streak = 0
         self.hearts = []
         self.p = dict(x=W / 2 - PW / 2, y=GROUND - PH, vx=0.0, vy=0.0, on_ground=True,
-                      slam=False, walk=0.0, blink=0.0, chain=0,
+                      walk=0.0, blink=0.0, chain=0, jump_buffer=0.0, block_grace=0.0,
                       dash=0.0, dash_dir=0, dash_cd=0.0, dance=0.0, taps=0, tap_gap=0.0)
+        self.countdown, self.wake = 0.0, 0.0  # seconds left before play resumes; "!" after waking
         self.last_tap = (0, -1.0)
         self.ghosts = []
         self.blocks, self.parts, self.pops = [], [], []
@@ -517,9 +520,19 @@ class Game:
 
     def start(self):
         if self.mode == "paused":
-            self.mode = "play"
+            self.resume()
         else:
             self.reset("play")
+
+    def pause(self):
+        if self.mode in ("play", "resume"):
+            self.mode = "paused"
+            self.play("snore")
+
+    def resume(self):
+        """Leaving the pause screen: a short countdown while Clawd wakes up, then play goes on."""
+        self.mode, self.countdown = "resume", RESUME_COUNT
+        self.play("tick")
 
     def show_board(self):
         self.last_key = None
@@ -571,13 +584,12 @@ class Game:
         return {self.pad_at(pos) for pos in self.pointers.values()} - {None}
 
     def controls(self):
-        """Left, right, jump, down: from the keyboard or the touch buttons."""
+        """Left, right, jump: from the keyboard or the touch buttons."""
         k = pygame.key.get_pressed()
         held = self.held()
         return (k[pygame.K_LEFT] or k[pygame.K_a] or "left" in held,
                 k[pygame.K_RIGHT] or k[pygame.K_d] or "right" in held,
-                k[pygame.K_UP] or k[pygame.K_w] or k[pygame.K_SPACE] or "jump" in held,
-                k[pygame.K_DOWN] or k[pygame.K_s] or "down" in held)
+                k[pygame.K_UP] or k[pygame.K_w] or k[pygame.K_SPACE] or "jump" in held)
 
     def pointer(self, kind, pid, pos):
         """A finger (or the mouse) went down, moved or lifted. kind: down | move | up"""
@@ -617,11 +629,11 @@ class Game:
 
     # ---------- update ----------
     def dance_check(self, dt, controls):
-        """Easter egg: a few quick slam presses on the main menu and Clawd does a little dance."""
+        """Easter egg: a few quick jump presses on the main menu and Clawd does a little dance."""
         p = self.p
-        down = controls[3]
-        pressed = down and not p.get("down_held")
-        p["down_held"] = down
+        jump = controls[2]
+        pressed = jump and not p.get("dance_held")
+        p["dance_held"] = jump
         p["tap_gap"] += dt
         if self.mode != "title":
             p["taps"], p["dance"] = 0, 0.0
@@ -685,7 +697,7 @@ class Game:
                                 c=random.choice(BLOCK_COLORS), rot=0.0, spin=(random.random() - 0.5) * 70,
                                 dead=False))
 
-    def hit_block(self, b, air=False, value=1, quiet=False):
+    def hit_block(self, b, air=False, value=1):
         """Score a destroyed block: combo multiplier, air chain bonus, and pickup drops."""
         b["dead"] = True
         self.streak += 1
@@ -700,9 +712,8 @@ class Game:
                 self.pops.append(dict(x=bx, y=by - 26, life=0.9, txt=f"AIR x{self.p['chain']}",
                                       c=(111, 183, 168), size=11))
         self.score += pts
-        if not quiet:  # a slam's shockwave plays one big sound instead
-            chain = air and self.p["chain"] >= 2
-            self.play("gold" if value == GOLD_POINTS else "air" if chain else f"hit{self.multiplier}")
+        chain = air and self.p["chain"] >= 2
+        self.play("gold" if value == GOLD_POINTS else "air" if chain else f"hit{self.multiplier}")
         if self.hits % BOLT_EVERY == 0:
             self.queue_pickup("bolts")
         if self.hits % MAGNET_EVERY == 0:
@@ -738,33 +749,32 @@ class Game:
         self.lose_life()
 
     def fizzle(self, b):
-        """A bomb that lands or gets slammed just puffs out."""
+        """A bomb that lands just puffs out."""
         b["dead"] = True
         self.play("fizzle")
         bx = b["x"] + b["s"] / 2
         self.burst(bx, min(b["y"] + b["s"] / 2, GROUND - 4), (90, 82, 102), 10, 90)
         self.dust.append(dict(x=bx, y=GROUND - 6, vx=0.0, r=6.0, life=0.8))
 
-    def shockwave(self):
-        """Landing a slam blasts blocks near the ground around Clawd."""
-        cx = self.p["x"] + PW / 2
-        self.play("shock")
-        # chunks of ground kicked up and thrown out to both sides
-        for _ in range(36):
-            side = random.choice((-1, 1))
-            self.parts.append(dict(x=cx + side * random.uniform(0, 16), y=GROUND - 2,
-                                   vx=side * random.uniform(80, 380), vy=-random.uniform(120, 380),
-                                   life=0.5 + random.random() * 0.4, c=random.choice((EARTH, EARTH, DIM, (82, 73, 98))),
-                                   s=random.choice((3, 4, 4, 6))))
-        for b in self.blocks:
-            if b["dead"] or b["y"] + b["s"] < GROUND - SLAM_REACH:
-                continue
-            if abs(b["x"] + b["s"] / 2 - cx) <= SLAM_RADIUS:
-                if b.get("bomb"):
-                    self.fizzle(b)
-                else:
-                    self.hit_block(b, quiet=True)
-        self.blocks = [b for b in self.blocks if not b["dead"]]
+    def block_jump(self, x, y, color):
+        """Jump off a block Clawd just broke in midair."""
+        p = self.p
+        p["vy"], p["jump_buffer"], p["block_grace"], p["dash"] = -JUMP_SPEED, 0.0, 0.0, 0.0
+        self.play("blockjump")
+        self.burst(x, y, color, 10, 160)
+        self.rings.append(dict(x=x, y=y, r=6.0, life=0.3, c=color))
+        self.ghosts.append([p["x"], p["y"], 0.18])
+
+    def broke_in_air(self, x, y, color):
+        """After a midair hit: jump off the block if jump was just pressed, otherwise a little bounce
+        (and a short moment where pressing jump still counts)."""
+        p = self.p
+        if p["jump_buffer"] > 0:
+            self.block_jump(x, y, color)
+        else:
+            p["vy"] = min(p["vy"], -BLOCK_BOUNCE)  # so air chains are possible
+            p["block_grace"] = JUMP_WINDOW
+            p["grace_at"] = (x, y, color)
 
     def burst(self, x, y, color, n, power, size=3):
         for _ in range(n):
@@ -868,11 +878,21 @@ class Game:
             p["blink"] = 0.12
 
         self.dance_check(dt, controls)
+        self.wake = max(0.0, self.wake - dt)
+        if self.mode == "resume":
+            before = math.ceil(self.countdown)
+            self.countdown -= dt
+            if self.countdown <= 0:
+                self.mode, self.wake = "play", 0.6
+                self.play("wake")
+                self.pops.append(dict(x=W / 2, y=240, life=0.7, txt="GO!", c=GOLD, size=30))
+            elif math.ceil(self.countdown) < before:
+                self.play("tick")
         if self.mode != "play":
             return
         self.t += dt
 
-        left, right, jump, down = controls
+        left, right, jump = controls
 
         accel, top = (2600 if p["on_ground"] else 1800), 230
         if self.speed:
@@ -900,13 +920,17 @@ class Game:
 
         pressed = jump and not p.get("jump_held")
         p["jump_held"] = jump
+        p["jump_buffer"] = JUMP_WINDOW if pressed else max(0.0, p["jump_buffer"] - dt)
+        p["block_grace"] = max(0.0, p["block_grace"] - dt)
         wall = -1 if p["x"] <= 2 else (1 if p["x"] >= W - PW - 2 else 0)
         if jump and p["on_ground"]:
-            p["vy"], p["on_ground"], p["slam"] = -640, False, False
+            p["vy"], p["on_ground"], p["jump_buffer"] = -JUMP_SPEED, False, 0.0
             self.play("jump")
+        elif pressed and p["block_grace"] > 0 and not p["on_ground"]:
+            self.block_jump(*p["grace_at"])  # jump pressed just after breaking a block
         elif pressed and wall and not p["on_ground"]:
             # wall jump: kick off the screen edge, up and away
-            p["vy"], p["vx"], p["slam"] = -WALL_JUMP, -wall * WALL_KICK, False
+            p["vy"], p["vx"], p["jump_buffer"] = -WALL_JUMP, -wall * WALL_KICK, 0.0
             self.play("walljump")
             p["dash"] = 0.0
             wx = 0 if wall < 0 else W
@@ -924,10 +948,6 @@ class Game:
                                        vy=random.uniform(-40, 0), life=0.3, c=DIM, s=2))
         if not p["on_ground"] and not jump and p["vy"] < -200:
             p["vy"] = -200  # short hop on early release
-        if down and not p["on_ground"] and not p["slam"]:
-            p["slam"] = True
-            p["vy"] = max(p["vy"], 820)
-            self.play("slam")
 
         p["vy"] += 1500 * dt
         p["x"] += p["vx"] * dt
@@ -939,11 +959,7 @@ class Game:
         if p["y"] < 64:  # keep Clawd under the HUD
             p["y"], p["vy"] = 64, max(p["vy"], 0.0)
         if p["y"] >= GROUND - PH:
-            landed_slam = p["slam"]
-            p["y"], p["vy"], p["on_ground"], p["slam"], p["chain"] = GROUND - PH, 0.0, True, False, 0
-            if landed_slam:
-                self.shake = max(self.shake, 5)
-                self.shockwave()
+            p["y"], p["vy"], p["on_ground"], p["chain"], p["block_grace"] = GROUND - PH, 0.0, True, 0, 0.0
         if p["on_ground"] and p["vx"]:
             p["walk"] += abs(p["vx"]) * dt
 
@@ -972,6 +988,8 @@ class Game:
                     and r["y"] < p["y"] + PH - 6 and r["y"] + r["s"] > p["y"]):
                 r["dead"] = True
                 self.hit_block(dict(r, c=GOLD), air=not p["on_ground"], value=GOLD_POINTS)
+                if not p["on_ground"]:
+                    self.broke_in_air(r["x"] + r["s"] / 2, r["y"] + r["s"] / 2, GOLD)
                 self.burst(r["x"] + r["s"] / 2, r["y"] + r["s"] / 2, BOLT_COLOR, 20, 260)
                 self.rings.append(dict(x=r["x"] + r["s"] / 2, y=r["y"] + r["s"] / 2, r=6.0, life=0.4, c=GOLD))
                 self.shake = max(self.shake, 4)
@@ -1008,7 +1026,7 @@ class Game:
             elif hit:
                 self.hit_block(b, air=not p["on_ground"])
                 if not p["on_ground"]:
-                    p["vy"] = min(p["vy"], -260)  # small bounce off the block, so air chains are possible
+                    self.broke_in_air(b["x"] + b["s"] / 2, b["y"] + b["s"] / 2, b["c"])
             elif b["y"] + b["s"] >= GROUND:
                 if b.get("bomb"):
                     self.fizzle(b)
@@ -1155,9 +1173,8 @@ class Game:
                 d = -1 if name == "left" else 1
                 pygame.draw.polygon(s, col, [(cx - d * 14, cy - 22), (cx + d * 16, cy), (cx - d * 14, cy + 22)])
             else:
-                tip, base = (cy - 32, cy - 6) if name == "jump" else (cy - 6, cy - 32)
-                pygame.draw.polygon(s, col, [(cx, tip), (cx - 20, base), (cx + 20, base)])
-                self.text("JUMP" if name == "jump" else "SLAM", cx, cy + 22, 12, col, surf=s)
+                pygame.draw.polygon(s, col, [(cx, cy - 32), (cx - 20, cy - 6), (cx + 20, cy - 6)])
+                self.text("JUMP", cx, cy + 22, 12, col, surf=s)
 
     def pixel_sprite(self, rows, x, y, size, color):
         for r, row in enumerate(rows):
@@ -1195,10 +1212,10 @@ class Game:
         self.text("HOW TO PLAY", W / 2, 60, 20, GOLD)
         sections = [
             ("CONTROLS", [("ARROWS", "move"), ("JUMP" if TOUCH else "UP", "jump"),
-                          ("SLAM" if TOUCH else "DOWN", "slam in midair"),
+                          ("BLOCKS", "jump as you hit one"),
                           ("TAP TAP", "dash left or right"), ("WALL", "jump again off the edge")]),
             ("SCORING", [("COMBO", "every 10 in a row adds x1"), ("AIR CHAIN", "hit more before landing"),
-                         ("SLAM", "clears blocks near you"), ("GOLD", "jump to catch it  +10")]),
+                         ("GOLD", "jump to catch it  +10")]),
             ("WATCH OUT", [("BOMBS", "never touch them"), ("3 MISSES", "and you are out")]),
         ]
         y = 92
@@ -1230,6 +1247,14 @@ class Game:
         y += 22
         self.pixel_sprite(SPEED, 64, y - 7, 3, SPEED_COLOR)
         self.text("run faster for a while", 96, y, 10, DIM, "left")
+
+    def draw_zzz(self, body, now):
+        """Little Zs drifting up from a sleeping Clawd."""
+        for i in range(3):
+            k = (now / 1800 + i / 3) % 1  # 0 to 1 as each Z rises
+            x = body.right - 4 + k * 26 + math.sin(k * 6) * 3
+            y = body.top - 8 - k * 60
+            self.text("Z", x, y, int(12 + k * 12), lerp(INK, PANEL, k ** 3))
 
     def draw_home_help(self):
         """How to put the game on a phone's home screen, so it opens full screen like an app."""
@@ -1323,8 +1348,11 @@ class Game:
             frame = 1 + beat % 2  # step side to side
             hop = -abs(math.sin(phase * math.pi)) * (16 if p["dance"] < DANCE_BEAT * 2 else 7)
             sway = (3 if beat % 2 else -3)
-        sprite = self.sprites[(frame, p["blink"] > 0)]
-        squash = -0.12 if p["slam"] else (-0.05 if not p["on_ground"] else 0)
+        asleep = self.mode in ("paused", "resume")
+        sprite = self.sprites[(frame, p["blink"] > 0 or asleep)]
+        squash = -0.05 if not p["on_ground"] else 0
+        if asleep:
+            squash = 0.04 * math.sin(now / 700)  # slow breathing
         if squash:
             sprite = pygame.transform.scale(sprite, (int(PW * (1 + squash)), int(PH * (1 - squash))))
         if p["dance"] > 0:
@@ -1425,6 +1453,8 @@ class Game:
 
         for q in self.pops:
             self.text(q["txt"], q["x"] + ox, q["y"] + oy, q.get("size", 14), q["c"])
+        if self.wake > 0 and self.mode == "play":
+            self.text("!", body.centerx, body.top - 18 - (8 if self.worn >= 0 else 0), 20, GOLD)
 
         if self.flash > 0:
             veil = pygame.Surface((W, H), pygame.SRCALPHA)
@@ -1502,12 +1532,20 @@ class Game:
                     self.button("PLAY", W / 2 + 76, 404, 140, 34, self.start, 12, CLAWD)
                 elif blink_on:
                     self.text("SPACE TO PLAY   ESC TO GO BACK", W / 2, 400, 11, DIM)
-            elif self.mode == "paused":
-                self.text("PAUSED", W / 2, 220, 40, INK)
-                if TOUCH:
-                    self.button("RESUME", W / 2, 290, 170, 44, self.go("play"), 16, CLAWD)
-                elif blink_on:
-                    self.text("PRESS SPACE TO RESUME", W / 2, 280, 13, DIM)
+            elif self.mode in ("paused", "resume"):
+                c.blits(clawd)  # Clawd stays bright while napping
+                self.draw_zzz(body, now)
+                if self.mode == "resume":
+                    n = math.ceil(self.countdown)
+                    grow = 1 + 0.4 * (self.countdown - n + 1) ** 3  # each number pops in, then settles
+                    self.text(str(n), W / 2, 220, int(56 * grow), GOLD)
+                    self.text("WAKING UP", W / 2, 280, 13, DIM)
+                else:
+                    self.text("PAUSED", W / 2, 220, 40, INK)
+                    if TOUCH:
+                        self.button("RESUME", W / 2, 290, 170, 44, self.resume, 16, CLAWD)
+                    elif blink_on:
+                        self.text("PRESS SPACE TO RESUME", W / 2, 280, 13, DIM)
             elif self.mode == "entry":
                 top_before = max([s["score"] for s in self.scores] + [0])
                 self.text("GAME OVER", W / 2, 150, 40, CLAWD)
@@ -1533,7 +1571,7 @@ class Game:
 
         if TOUCH and self.mode != "entry":
             if self.mode == "play":
-                self.button("II", W / 2 - 24, 26, 40, 32, self.go("paused"), 12, DIM)
+                self.button("II", W / 2 - 24, 26, 40, 32, self.pause, 12, DIM)
             self.sound_button(W / 2 + 24 if self.mode == "play" else W / 2, 26)
         if self.notice:
             self.text(self.notice["txt"], W / 2, 64, 12, INK)
@@ -1558,14 +1596,14 @@ class Game:
     async def run(self):
         while True:
             ms = self.clock.tick(60 if WEB else 120)
-            if ms > 400 and self.mode == "play":
-                self.mode = "paused"  # the game was frozen a while, e.g. the phone switched apps
+            if ms > 400 and self.mode in ("play", "resume"):
+                self.pause()  # the game was frozen a while, e.g. the phone switched apps
             dt = min(0.033, ms / 1000)
             for e in pygame.event.get():
                 if e.type == pygame.QUIT:
                     return
-                if e.type in (pygame.WINDOWFOCUSLOST, pygame.WINDOWHIDDEN, pygame.WINDOWMINIMIZED) and self.mode == "play":
-                    self.mode = "paused"
+                if e.type in (pygame.WINDOWFOCUSLOST, pygame.WINDOWHIDDEN, pygame.WINDOWMINIMIZED):
+                    self.pause()
                 if e.type in (pygame.FINGERDOWN, pygame.FINGERMOTION, pygame.FINGERUP):
                     pid = (e.touch_id, e.finger_id)
                     kind = {pygame.FINGERDOWN: "down", pygame.FINGERMOTION: "move", pygame.FINGERUP: "up"}[e.type]
@@ -1620,15 +1658,12 @@ class Game:
                     elif e.key in (pygame.K_RIGHT, pygame.K_d):
                         self.tap_direction(1)
                     if e.key in (pygame.K_p, pygame.K_ESCAPE):
-                        if self.mode == "play":
-                            self.mode = "paused"
+                        if self.mode in ("play", "resume"):
+                            self.pause()
                         elif self.mode == "paused":
-                            self.mode = "play"
-                    elif e.key in (pygame.K_SPACE, pygame.K_RETURN) and self.mode != "play":
-                        if self.mode == "paused":
-                            self.mode = "play"
-                        else:
-                            self.reset("play")
+                            self.resume()
+                    elif e.key in (pygame.K_SPACE, pygame.K_RETURN) and self.mode not in ("play", "resume"):
+                        self.start()
             self.update(dt, self.controls())
             self.update_music()
             self.draw(pygame.time.get_ticks())
