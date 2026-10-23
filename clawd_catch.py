@@ -1,5 +1,7 @@
 """Block Catch - hit the falling blocks before they reach the ground."""
 import asyncio
+import colorsys
+import datetime
 import json
 import math
 import os
@@ -44,10 +46,13 @@ MAX_MULT = 4
 BOMB_AFTER = 15  # seconds before bombs start falling
 BOMB_RED = (232, 72, 72)
 BOMB_BODY = (16, 15, 22)
+DIZZY_TIME = 1.0  # seconds of stars after bonking a bomb with his head
+HOTFOOT_TIME = 0.5  # seconds of kicking legs and a fiery behind after landing on a bomb (or until he lands)
 JUMP_SPEED = 640  # upward speed of a jump, from the ground or off a block
 BLOCK_BOUNCE = 260  # little hop when Clawd breaks a block in midair without jumping
 JUMP_WINDOW = 0.15  # seconds a jump press counts before or after breaking a block, to jump off it
 RESUME_COUNT = 3  # seconds of countdown after unpausing, while Clawd wakes up
+LEAVE_COUNT = 3  # seconds to change your mind after choosing MAIN MENU on the pause screen
 DANCE_PRESSES = 4  # easter egg: press jump this many times quickly on the main menu and Clawd dances
 DANCE_GAP = 0.45  # most seconds allowed between those presses
 DANCE_TIME = 2.0
@@ -59,22 +64,28 @@ GOLD_HEIGHT = (150, 450)  # random top edge; a plain jump reaches about 360
 WALL_JUMP = 600  # upward speed of a wall jump
 WALL_KICK = 340  # sideways push away from the wall
 WALL_SLIDE = 140  # max fall speed while holding into a wall
+FLIP_SPEED = 120  # sideways speed that turns a block jump into a front flip (slower: a springy stretch)
+SLIDE_LEAN = 27  # degrees Clawd tilts on a wall slide, so his arm and legs both touch the wall
+SLIDE_PANIC = 0.12  # chance a wall slide is a panicky scramble instead of a cool lean
 GOLD_POINTS = 10  # times the combo multiplier
+JACKPOT_TIME = 0.9  # how long the JACKPOT! text shows after catching a gold block
 MAGNET_EVERY = 25  # blocks hit (in total) that drop a magnet
 MAGNET_TIME = 1.0
 MAGNET_FALL = 50
 MAGNET_PULL = 160  # sideways pull speed on blocks while the magnet is active
+FALL_GAP = 6  # min space kept between falling blocks and bombs
 MAGNET_COLOR = (224, 92, 108)
 MAGNET_TIP = (220, 220, 232)
-SPEED_COOLDOWN = 30  # seconds after one speed boost drops before the next can
-SPEED_RANDOM = 20  # plus up to this many random extra seconds
-SPEED_TIME = 5.0
-SPEED_FALL = 55
-SPEED_MULT = 1.6  # run speed and acceleration while boosted
-SPEED_COLOR = (102, 214, 196)
+SHIELD_COOLDOWN = 30  # seconds after one shield drops before the next can
+SHIELD_RANDOM = 20  # plus up to this many random extra seconds
+SHIELD_FALL = 55
+SHIELD_COLOR = (127, 200, 255)
+SHIELD_PIXELS = {"X": SHIELD_COLOR, "W": (230, 246, 255)}
+SHIELD_STYLE = "glow"  # how the shield outline looks: "glow" (breathing) or "sparkles"
 CLAWD = (217, 119, 87)
 EARTH = (58, 51, 70)
 GOLD = (232, 176, 75)
+FIRE = (BOMB_RED, GOLD, (255, 150, 60))  # flames off a hot foot
 BLOCK_COLORS = [(111, 183, 168), (157, 139, 224), (224, 122, 154), (127, 166, 224)]  # no gold or yellow, so gold blocks stand out
 
 # Clawd sprite, 13x9. X = body, E = eye. Legs alternate frames.
@@ -101,18 +112,116 @@ PURPLE = BLOCK_COLORS[1]
 SKINS = [
     ("CLAWD", CLAWD, None),
     ("AIRTIME RICKY", (238, 236, 232), "air"),
-    ("OCD TRISTEN", (150, 104, 222), "purple"),
+    ("OBSESSED OSCAR", (150, 104, 222), "purple"),
     ("RAGING RYAN", (222, 58, 58), "bombs"),
-    ("LIGHTNING NICK", (246, 210, 72), "zaps"),
-    ("EARTH BENDER BEN", [(122, 112, 124), (122, 112, 124), (96, 86, 102), (150, 140, 144), (82, 73, 98)], "landings"),
+    ("LIGHTNING LANGLEY", (246, 210, 72), "zaps"),
+    ("EARTHQUAKE BEN", [(122, 112, 124), (122, 112, 124), (96, 86, 102), (150, 140, 144), (82, 73, 98)], "landings"),
+    # added later: the third item is a challenge from COLOR_GOALS, and a word for a look is an animation (skin_pixel)
+    ("FROSTY FRANK", [(170, 220, 250), (200, 235, 255), (140, 200, 240)], "december"),
+    ("GOLDEN GABE", [(240, 190, 80), (255, 220, 120), (210, 150, 50)], "golds50"),
+    ("MINTY MAYA", (140, 225, 190), "score1000"),
+    ("SMOKY SAM", [(110, 104, 126), (92, 86, 108), (128, 122, 142)], "games50"),
+    ("BUBBLEGUM BELLA", (250, 150, 200), "hearts100"),
+    ("TOXIC TONY", [(150, 230, 60), (120, 200, 40), (180, 245, 90)], "bombs10"),
+    ("LAVA LUKE", [(240, 90, 40), (255, 150, 50), (200, 50, 40)], "hotfoots50"),
+    ("OCEAN OLIVIA", [(40, 130, 170), (60, 160, 200), (30, 100, 150)], "walljumps500"),
+    ("PUMPKIN PETE", (240, 140, 50), "october"),
+    ("CHERRY CHLOE", (176, 30, 72), "combo4"),
+    ("SLIME STEVE", [(90, 190, 90), (60, 150, 70), (120, 210, 110)], "bounces500"),
+    ("COTTON CANDY CARL", [(250, 170, 210), (160, 210, 250)], "dances50"),
+    ("CAMO CODY", [(110, 130, 80), (80, 96, 60), (140, 120, 80), (60, 70, 50)], "time600"),
+    ("ZEBRA ZACK", "zebra", "dashes1000"),
+    ("TROPICAL TRISTEN", "tropical", "streak100"),
+    ("NINJA NICK", "ninja", "dashhits100"),
+    ("NEON NOAH", [(60, 240, 230), (240, 70, 220)], "air50"),
+    ("PEACHY PAIGE", (252, 196, 170), "landings5000"),
+    ("ROBO ROB", "robo", "zapped1000"),
+    ("BLOCKBUSTER BRAD", "blocks", "blocks5000"),
+    ("STARLIGHT STELLA", "stella", "days30"),
+    ("GALAXY GRACE", "galaxy", "sky1000"),
+    ("PLATINUM PARKER", "platinum", "score5000"),
+    ("DIAMOND DANI", "diamond", "score10000"),
+    ("COSMIC COLE", "cosmic", "score20000"),
+    ("GUARDIAN GRANT", "guardian", "shields1000"),
+    ("GHOST GARY", "ghost", "hats20"),
+    ("THUNDER THEO", "thunder", "bolts1000"),
+    ("HEARTFELT HOPE", "love", "hearts1000"),
+    ("JACKPOT JACK", "jackpot", "golds1000"),
+    ("KRYSTAL KAI", "krystal", "blocks20000"),
+    ("KABOOM KEVIN", "kaboom", "bombs1000"),
+    ("PHOENIX PHIL", "phoenix", "hotfoots1000"),
+    ("ANCIENT ARCHIE", "archie", "days100"),
+    ("OBSIDIAN OWEN", "obsidian", "hours50"),
+    ("LEGENDARY LEO", "leo", "everything"),
+    ("MAGNETIC MILO", "magnet", "magnets1000"),
 ]
+# A color challenge: (what's counted, goal, what the menu says). See Game.stat_value for the counts.
+COLOR_GOALS = {
+    "december": ("month", 12, "PLAY IN DECEMBER"),
+    "october": ("month", 10, "PLAY IN OCTOBER"),
+    "golds50": ("golds_total", 50, "CATCH 50 GOLD BLOCKS"),
+    "score1000": ("score", 1000, "SCORE 1000 IN ONE GAME"),
+    "games50": ("games", 50, "PLAY 50 GAMES"),
+    "hearts100": ("hearts", 100, "CATCH 100 HEARTS"),
+    "bombs10": ("bombs_game", 10, "HIT 10 BOMBS IN ONE GAME"),
+    "hotfoots50": ("hotfoots", 50, "GET 50 HOT FOOTS"),
+    "walljumps500": ("walljumps", 500, "WALL JUMP 500 TIMES"),
+    "combo4": ("combo4", 10, "REACH COMBO X4 10 TIMES"),
+    "bounces500": ("block_bounces_total", 500, "BOUNCE OFF 500 BLOCKS"),
+    "dances50": ("dances", 50, "DANCE 50 TIMES"),
+    "time600": ("time", 600, "SURVIVE 10 MINUTES IN ONE GAME"),
+    "dashes1000": ("dashes", 1000, "DASH 1000 TIMES"),
+    "streak100": ("streak", 100, "100 IN A ROW"),
+    "dashhits100": ("dash_hits", 100, "HIT 100 BLOCKS MID-DASH"),
+    "air50": ("chain", 50, "50 IN A ROW IN THE AIR"),
+    "landings5000": ("landings", 5000, "LAND 5000 TIMES"),
+    "zapped1000": ("zapped", 1000, "ZAP 1000 BLOCKS"),
+    "blocks5000": ("blocks", 5000, "BREAK 5000 BLOCKS"),
+    "days30": ("days", 30, "PLAY ON 30 DIFFERENT DAYS"),
+    "sky1000": ("sky_total", 1000, "TOUCH THE SKY 1000 TIMES"),
+    "score5000": ("score", 5000, "SCORE 5000 IN ONE GAME"),
+    "score10000": ("score", 10000, "SCORE 10000 IN ONE GAME"),
+    "score20000": ("score", 20000, "SCORE 20000 IN ONE GAME"),
+    "shields1000": ("shield_saves", 1000, "GET SAVED BY 1000 SHIELDS"),
+    "hats20": ("hats", 20, "UNLOCK 20 HATS"),
+    "bolts1000": ("bolts", 1000, "CATCH 1000 BOLTS"),
+    "hearts1000": ("hearts", 1000, "CATCH 1000 HEARTS"),
+    "golds1000": ("golds_total", 1000, "CATCH 1000 GOLD BLOCKS"),
+    "blocks20000": ("blocks", 20000, "BREAK 20000 BLOCKS"),
+    "bombs1000": ("bombs", 1000, "HIT 1000 BOMBS"),
+    "hotfoots1000": ("hotfoots", 1000, "GET 1000 HOT FOOTS"),
+    "days100": ("days", 100, "PLAY ON 100 DIFFERENT DAYS"),
+    "hours50": ("playtime", 50 * 3600, "PLAY FOR 50 HOURS"),
+    "magnets1000": ("magnets_total", 1000, "CATCH 1000 MAGNETS"),
+    "everything": ("colors", 0, "UNLOCK EVERY OTHER COLOR"),  # goal filled in below
+}
+COLOR_GOALS["everything"] = ("colors", len(SKINS) - 1, "UNLOCK EVERY OTHER COLOR")
+GAME_STATS = {"score", "streak", "chain", "time", "bombs_game", "month"}  # counted in one game, no progress shown
+# the color picker goes easiest to hardest (saves keep each color's place in SKINS); every animated
+# color is harder than every still one. Names on the menu are colored by their tier.
+COLOR_TIERS = [
+    ((120, 210, 140), ["CLAWD", "PUMPKIN PETE", "FROSTY FRANK", "OBSESSED OSCAR", "RAGING RYAN", "AIRTIME RICKY",
+                       "MINTY MAYA", "COTTON CANDY CARL"]),  # easy
+    ((127, 200, 255), ["TOXIC TONY", "GOLDEN GABE", "LAVA LUKE", "SMOKY SAM", "LIGHTNING LANGLEY", "EARTHQUAKE BEN",
+                       "CHERRY CHLOE", "BUBBLEGUM BELLA", "OCEAN OLIVIA", "SLIME STEVE", "NINJA NICK"]),  # medium
+    ((232, 176, 75), ["ZEBRA ZACK", "NEON NOAH", "CAMO CODY", "PEACHY PAIGE"]),  # hard
+    ((240, 110, 90), ["TROPICAL TRISTEN", "PLATINUM PARKER", "BLOCKBUSTER BRAD", "GHOST GARY", "STARLIGHT STELLA",
+                      "ROBO ROB", "DIAMOND DANI", "GALAXY GRACE", "KABOOM KEVIN", "PHOENIX PHIL", "THUNDER THEO",
+                      "JACKPOT JACK", "HEARTFELT HOPE", "COSMIC COLE", "KRYSTAL KAI", "MAGNETIC MILO"]),  # very hard
+    ((200, 140, 255), ["GUARDIAN GRANT", "ANCIENT ARCHIE", "OBSIDIAN OWEN", "LEGENDARY LEO"]),  # legendary
+]
+_SKIN_INDEX = {sk[0]: i for i, sk in enumerate(SKINS)}
+COLOR_ORDER = [_SKIN_INDEX[name] for _, names in COLOR_TIERS for name in names]
+TIER_COLOR = {_SKIN_INDEX[name]: col for col, names in COLOR_TIERS for name in names}
+assert sorted(COLOR_ORDER) == list(range(len(SKINS)))
 AIR_STREAK = 10  # blocks broken in a row without touching the ground (lightning doesn't count)
 PURPLE_GOAL = 50  # purple blocks broken in one game
 BOMB_GOAL = 3  # bombs touched in one game
 ZAP_GOAL = 100  # lightning bolts caught, over all games
 LANDING_GOAL = 1000  # landings on the ground, over all games
 
-# Hats, unlocked by reaching a streak. Drawn 13 wide like Clawd and sat on top of his head.
+# Hats, drawn 13 wide like Clawd and sat on top of his head. The second item is what unlocks it:
+# a number is a streak to reach, a word is a challenge from HAT_GOALS.
 HAT_COLORS = {
     # pinks
     "L": (255, 176, 200), "P": (224, 122, 154), "p": (168, 78, 112),
@@ -127,6 +236,11 @@ HAT_COLORS = {
     # accents
     "W": (239, 230, 220), "R": (232, 72, 72), "r": (160, 40, 52),
     "C": (111, 210, 190), "U": (170, 140, 240),
+    # steel, horn, army green, visor
+    "S": (190, 196, 210), "s": (120, 126, 146), "H": (240, 232, 210), "h": (196, 180, 150),
+    "A": (118, 138, 84), "a": (76, 92, 56), "V": (110, 210, 245), "v": (50, 120, 180),
+    # black and dark grey (light enough to see on the night sky), leaf greens
+    "Z": (64, 60, 80), "z": (112, 106, 128), "E": (90, 200, 110), "e": (50, 130, 70),
 }
 HATS = [
     ("PARTY HAT", 20, ["......w......",
@@ -156,11 +270,75 @@ HATS = [
                     "..wYYYYYYYy..",
                     "..YRYYCYYUy..",
                     "..yyyyyyyyy.."]),
+    ("VIKING HELMET", "bomb_bounces", ["H...........H", "hH..SSSSS..Hh", ".hHSSSSSSSHh.", "..SsSsSsSsS..", "..sssssssss.."]),
+    ("ARMY HELMET", "hour", ["....AAAAA....", "...AaAAAAAA..", "..AAAAAaAAA..", "..AaAAAAAaA..", ".aaaaaaaaaaa."]),
+    ("SPACE HELMET", "sky", ["......R......", "......W......", "...WWWWWWW...", "..WVVVVVVVW..", "..WVvVVVVVW..",
+                             "..WWWWWWWWW.."]),
+    ("PIRATE HAT", "golds", ["...ZZZZZZZ...", "..ZZZWZWZZZ..", "..ZZZZWZZZZ..", "ZZZZZZZZZZZZZ", ".zzzzzzzzzzz."]),
+    ("CHEF HAT", "score500", ["...WW.WW.WW..", "..WWWWWWWWW..", "..WWWWWWWWW..", "...WWWWWWW...", "...zzzzzzz..."]),
+    ("WIZARD HAT", "dances", ["......U......", ".....UUw.....", "....UUUUU....", "...UwUUUUU...", "..UUUUUwUUU..",
+                              "KKKKKKKKKKKKK"]),
+    ("BEANIE", "games", ["......W......", "....RRRRR....", "...RWRWRWR...", "..RRRRRRRRR..", "..rrrrrrrrr.."]),
+    ("HARD HAT", "blocks", ["....YYYYY....", "...YYwYYYY...", "..YYYYYYYYY..", "yyyyyyyyyyyyy"]),
+    ("FIREFIGHTER", "hotfoots", ["....RRRRR....", "...RRYYYRR...", "..RRRYRYRRR..", "rrrrrrrrrrrrr"]),
+    ("KNIGHT HELMET", "shield_saves", [".....RRr.....", "....RR.......", "...SSSSSSS...", "..SsSSSSSsS..",
+                                       "..SSZZZZZSS..", "..sssssssss.."]),
+    ("SOMBRERO", "walljumps", ["......T......", ".....TNT.....", "....TNNNT....", "...RYRYRYR...", "TNNNNNNNNNNNT",
+                               ".nnnnnnnnnnn."]),
+    ("HALO", "clean", ["...wwwwwww...", "..w.......w..", "...YYYYYYY...", "............."]),
+    ("DEVIL HORNS", "bombs", ["..R.......R..", "..Rr.....rR..", "...rr...rr..."]),
+    ("BUNNY EARS", "jumps", ["...W.....W...", "..WPW...WPW..", "..WPW...WPW..", "..WPW...WPW..", "...WW...WW..."]),
+    ("CAT EARS", "flips", ["..N.......N..", "..NP.....PN..", "..NNN...NNN.."]),
+    ("PROPELLER CAP", "air100", ["..BBBB.RRRR..", "......Y......", "....RYBRY....", "...BBRRRBB...", "..YYYYYYYYY.."]),
+    ("GRAD CAP", "score2000", [".ZZZZZZZZZZZ.", "ZZZZZZYZZZZZZ", "...zzzzzzzY..", "...zzzzzzzY.."]),
+    ("HEADPHONES", "playtime", ["...zzzzzzz...", "..z.......z..", ".RR.......RR.", ".RR.......RR."]),
+    ("FLOWER CROWN", "hearts", [".LP.wY.LP.wY.", ".PL.Yw.PL.Yw.", "eEeEeEeEeEeEe"]),
+    ("ROBOT ANTENNA", "zapped", ["......R......", "......z......", "......z......", "....zzzzz....", "...zSSSSSz..."]),
+    ("SANTA HAT", "december", ["..........W..", "........RRW..", ".....RRRRr...", "...RRRRRRR...", "..WWWWWWWWW.."]),
+    ("WITCH HAT", "october", [".......K.....", "......KK.....", ".....KKKK....", "....KGGGGK...", "KKKKKKKKKKKKK"]),
+    ("CAPTAIN HAT", "days", ["...WWWWWWW...", "..WWWWYWWWW..", "..ZZZZZZZZZ..", "..zzzzzzzzzz."]),
+    ("MUSHROOM CAP", "block_bounces", ["....RRRRR....", "..RRWRRRWRR..", ".RRRRRWRRRRR.", ".WWWWWWWWWWW."]),
+    ("NINJA BAND", "dashes", ["RRRRRRRRRRRRR", "rrrrrrrrrrrRr", "...........rR"]),
+    ("JESTER HAT", "jester", ["R...........B", "rR.........Bb", ".RR..YYY..BB.", "..RRRBBBBBB..", "..YYYYYYYYY.."]),
 ]
+# A hat challenge: (goal, where it's counted, what the menu says). "total" counts over all games (saved),
+# "game" counts in one game, and "event" is a one-off that's either done or not.
+HAT_GOALS = {
+    "bomb_bounces": (25, "total", "BOUNCE OFF 25 BOMBS"),
+    "hour": (3600, "game", "SURVIVE 1 HOUR IN ONE GAME"),
+    "sky": (1, "game", "WALL JUMP TO THE TOP OF THE SKY"),
+    "golds": (20, "game", "CATCH 20 GOLD IN ONE GAME"),
+    "score500": (500, "game", "SCORE 500 IN ONE GAME"),
+    "dances": (10, "total", "DANCE 10 TIMES"),
+    "games": (10, "total", "PLAY 10 GAMES"),
+    "blocks": (1000, "total", "BREAK 1000 BLOCKS"),
+    "hotfoots": (100, "total", "GET 100 HOT FOOTS"),
+    "shield_saves": (5, "total", "GET SAVED BY 5 SHIELDS"),
+    "walljumps": (1000, "total", "WALL JUMP 1000 TIMES"),
+    "clean": (240, "game", "4 MINUTES WITHOUT LOSING A LIFE"),
+    "bombs": (50, "total", "HIT 50 BOMBS"),
+    "jumps": (500, "total", "JUMP 500 TIMES"),
+    "flips": (200, "game", "200 FRONT FLIPS IN ONE GAME"),
+    "air100": (100, "game", "100 AIR CHAIN IN A ROW"),
+    "score2000": (2000, "game", "SCORE 2000 IN ONE GAME"),
+    "playtime": (3600, "total", "PLAY FOR 1 HOUR"),
+    "hearts": (500, "total", "CATCH 500 HEARTS"),
+    "zapped": (500, "total", "ZAP 500 BLOCKS"),
+    "december": (12, "event", "PLAY IN DECEMBER"),
+    "october": (10, "event", "PLAY IN OCTOBER"),
+    "days": (7, "total", "PLAY ON 7 DIFFERENT DAYS"),
+    "block_bounces": (50, "game", "BOUNCE OFF 50 BLOCKS IN ONE GAME"),
+    "dashes": (200, "total", "DASH 200 TIMES"),
+    "jester": (1, "game", "LOSE YOUR LAST LIFE RIGHT AFTER A SHIELD"),
+}
+# everything counted over all games (saved with the hats)
+TOTAL_STATS = [k for k, (_, scope, _) in HAT_GOALS.items() if scope == "total" and k != "days"] + [
+    "golds_total", "sky_total", "block_bounces_total", "combo4", "dash_hits", "best_score", "magnets_total", "total_score"]
+JESTER_WINDOW = 3.0  # seconds after a shield pops that losing your last life earns the jester hat
 
 HEART = [".XX.XX.", "XXXXXXX", "XXXXXXX", ".XXXXX.", "..XXX..", "...X..."]
 BOLT = ["...XXX", "..XXX.", ".XXX..", "XXXXXX", "..XXX.", ".XXX..", "XXX...", "X....."]
-SPEED = ["XX..XX..", ".XX..XX.", "..XX..XX", ".XX..XX.", "XX..XX.."]
+SHIELD_ICON = ["XXXXXXX", "XWXXXXX", "XWXXXXX", "XWXXXXX", ".XXXXX.", "..XXX..", "...X..."]  # W = shine
 # speaker icons for the sound button, one per SOUND_MODES entry
 SPEAKERS = [
     ["...X...X..", "..XX....X.", "XXXX..X..X", "XXXX..X..X", "XXXX..X..X", "..XX....X.", "...X...X.."],
@@ -220,12 +398,59 @@ VERSION_CHECK = 300  # seconds between checks for a newer build on the website
 SOUND_MODES = ["ON", "EFFECTS ONLY", "OFF"]  # M key / speaker button cycles through these
 MUSIC_VOLUME = {"play": 0.45, "paused": 0.0}  # every other screen: 0.2
 TOP_N = 10
+LB_FETCH = 100  # scores fetched, so the top 10 can still be filled after keeping one per player
 NAME_LEN = 10
 
 
 # Shared online leaderboard (dreamlo.com), reached through a small Cloudflare relay (see relay/) because
 # dreamlo's free tier is HTTP only and browsers refuse that. The relay holds dreamlo's private code.
 LB_URL = "https://block-catch-lb.jacobhh3.workers.dev/"
+
+
+def skin_number(text):
+    """The color a leaderboard entry was set in (dreamlo's text field), or None if it has none or it's unknown."""
+    try:
+        n = int(str(text).strip())
+    except (TypeError, ValueError):
+        return None
+    return n if 0 <= n < len(SKINS) else None
+
+
+# Before this was fixed, every phone got this same player id (the browser's Python random starts out the same),
+# so scores with it are told apart by name instead.
+SHARED_ID = "44cb"
+
+
+def new_player_id():
+    """A random 4-hex-digit id for this device. In the browser, from the browser's own random numbers."""
+    if WEB:
+        try:
+            platform.window.eval("window.bc_pid = crypto.getRandomValues(new Uint16Array(1))[0]"
+                                 ".toString(16).padStart(4, '0')")
+            pid = str(platform.window.bc_pid)
+            if len(pid) == 4 and pid != SHARED_ID:
+                return pid
+        except Exception:
+            pass
+    return "%04x" % random.SystemRandom().randrange(16 ** 4)
+
+
+def player_of(key):
+    """Online keys are NAME_xxxx, where xxxx is the player (one per device). Old phone scores all share one id,
+    so each of their names counts as its own player."""
+    who = key.rsplit("_", 1)[1] if "_" in key else key
+    return key if who == SHARED_ID else who
+
+
+def best_per_player(entries):
+    """Leaderboard protection: one spot per player, their best, so nobody can fill the board with many names.
+    A player only moves up by beating their own best, and only moves down when someone passes them."""
+    best = {}
+    for e in entries:
+        who = player_of(e["key"])
+        if who not in best or e["score"] > best[who]["score"]:
+            best[who] = e
+    return sorted(best.values(), key=lambda s: -s["score"])[:TOP_N]
 
 
 def display_name(key):
@@ -305,8 +530,8 @@ class Leaderboard:
             self.player_id = str(data.get("player_id", ""))
         except (OSError, ValueError, AttributeError, KeyError, TypeError):
             pass
-        if not self.player_id:
-            self.player_id = "%04x" % random.randrange(16 ** 4)
+        if not self.player_id or (WEB and self.player_id == SHARED_ID):
+            self.player_id = new_player_id()
         for s in self.scores:
             s.setdefault("key", s["name"])
         self.save()
@@ -326,13 +551,13 @@ class Leaderboard:
     def key_for(self, name):
         return f"{name}_{self.player_id}"
 
-    def submit(self, name, score):
-        """Shows the score in the table right away, then uploads it in the background."""
+    def submit(self, name, score, skin):
+        """Shows the score in the table right away, then uploads it (with the color worn) in the background."""
         key = self.key_for(name)
         with self.lock:
             self.name = name
-            self.pending.append(dict(name=name, score=score))
-            self.merge(dict(key=key, name=name, score=score))
+            self.pending.append(dict(name=name, score=score, skin=skin))
+            self.merge(dict(key=key, name=name, score=score, skin=skin))
             self.save()
         self.refresh()
         return key
@@ -341,12 +566,12 @@ class Leaderboard:
         # dreamlo keeps only the higher score per key, so do the same here
         for s in self.scores:
             if s["key"] == entry["key"]:
-                s["score"] = max(s["score"], entry["score"])
+                if entry["score"] >= s["score"]:
+                    s["score"], s["skin"] = entry["score"], entry.get("skin")
                 break
         else:
             self.scores.append(entry)
-        self.scores.sort(key=lambda s: -s["score"])
-        del self.scores[TOP_N:]
+        self.scores = best_per_player(self.scores)
 
     def refresh(self):
         if WEB:
@@ -395,22 +620,27 @@ class Leaderboard:
                 todo = list(self.pending)
             for p in todo:
                 key = urllib.parse.quote(self.key_for(p["name"]), safe="")
-                reply = await self._get(f"{LB_URL}add/{key}/{int(p['score'])}")
+                add = f"{LB_URL}add/{key}/{int(p['score'])}"
+                try:  # with the color they wore, so other players see their name in its tier color
+                    reply = await self._get(f"{add}/{int(p.get('skin', 0))}")
+                except OSError:
+                    reply = await self._get(add)  # an older relay only takes name and score
                 if not reply.startswith("OK"):
                     raise OSError(reply)
                 with self.lock:
                     self.pending.remove(p)
                     self.save()
-            data = json.loads(await self._get(f"{LB_URL}json/{TOP_N}"))
+            data = json.loads(await self._get(f"{LB_URL}json/{LB_FETCH}"))
             rows = (data.get("dreamlo", {}).get("leaderboard") or {}).get("entry") or []
             if isinstance(rows, dict):
                 rows = [rows]
-            online = [dict(key=r["name"], name=display_name(r["name"]), score=int(r["score"]))
-                      for r in rows]
+            online = [dict(key=r["name"], name=display_name(r["name"]), score=int(r["score"]),
+                           skin=skin_number(r.get("text"))) for r in rows]
             with self.lock:
-                self.scores = sorted(online, key=lambda s: -s["score"])[:TOP_N]
+                self.scores = best_per_player(online)
                 for p in self.pending:  # anything still waiting stays visible locally
-                    self.merge(dict(key=self.key_for(p["name"]), name=p["name"], score=p["score"]))
+                    self.merge(dict(key=self.key_for(p["name"]), name=p["name"], score=p["score"],
+                                    skin=p.get("skin")))
                 self.status = "online"
                 self.save()
         except Exception:
@@ -447,10 +677,132 @@ def make_clawd(frame, blink, skin=CLAWD, px=PX):
     return surf
 
 
-def skin_color(i):
-    """One color that stands for a skin, for its name on the menu."""
-    color = SKINS[i][1]
-    return color if isinstance(color, tuple) else color[0]
+def hsv_rgb(h, s, v):
+    return tuple(int(x * 255) for x in colorsys.hsv_to_rgb(h % 1, s, v))
+
+
+SKY_STARS = {(0, 3), (1, 9), (4, 2), (5, 10), (6, 5), (3, 11), (0, 7)}
+BOMB_SEAMS = {(2, 2), (2, 10), (3, 1), (3, 11), (4, 3), (4, 9), (5, 4), (5, 8), (6, 6), (0, 4), (0, 8)}
+PHOENIX_FIRE = [(120, 20, 30), (200, 40, 30), (240, 90, 30), (255, 150, 40), (255, 210, 90), (255, 245, 200)]
+LOVE_HEARTS = {(1, 3), (1, 5), (2, 4), (1, 8), (1, 10), (2, 9), (4, 5), (4, 7), (5, 6)}
+SKIN_EYES = {"obsidian": (200, 120, 255), "ninja": (240, 236, 230), "stella": (240, 230, 220),
+             "galaxy": (240, 230, 220), "kaboom": (240, 230, 220), "phoenix": (60, 20, 30), "magnet": (250, 240, 230)}
+
+
+def skin_pixel(look, r, c, t):
+    """The color of one of Clawd's pixels (row r, column c) in a patterned or animated look, t seconds in."""
+    k = r * 7 + c * 13 + r * c * 5  # the same per-pixel pick as speckles
+    if look == "zebra":
+        return (240, 236, 230) if (c // 2) % 2 == 0 else (70, 66, 82)
+    if look == "tropical":  # sunset, pink at the top to yellow-green at his feet, slowly shifting
+        return hsv_rgb(0.93 + r * 0.03 + 0.04 * math.sin(t * 0.8 + c * 0.3), 0.6, 1.0 - r * 0.04)
+    if look == "ninja":
+        if r in (2, 3) and 2 <= c <= 10:
+            return (210, 50, 60)  # headband across his eyes
+        return (54, 50, 66) if k % 3 else (66, 62, 80)
+    if look == "robo":  # steel, with a scanning line moving down him
+        return (150, 240, 255) if abs(r - (t * 6) % 12 + 2) < 0.8 else ((180, 186, 200) if k % 3 else (150, 156, 172))
+    if look == "blocks":  # little tiles in the four block colors, shuffling every so often
+        col = BLOCK_COLORS[(c // 2 + r // 2 * 3 + int(t * 1.5)) % 4]
+        return tuple(min(255, v + 40) for v in col) if r % 2 == 0 and c % 2 == 0 else col
+    if look == "stella":  # night sky with twinkling stars
+        if (r, c) in SKY_STARS:
+            return (255, 250, 220) if math.sin(t * 4 + r * 3 + c) > 0 else (120, 110, 190)
+        return (40, 44, 100) if k % 4 else (56, 50, 120)
+    if look == "galaxy":  # drifting purple-pink nebula with stars
+        if (r, c) in SKY_STARS or (r + 2, c - 1) in SKY_STARS:
+            return (255, 250, 230) if math.sin(t * 4 + r * 3 + c) > 0.2 else (130, 100, 200)
+        return hsv_rgb(0.76 + 0.08 * math.sin(c * 0.5 - t * 1.5 + r * 0.3), 0.6, 0.62 if k % 3 else 0.72)
+    if look == "platinum":  # a shine sweeps across
+        if 0 <= c + r * 0.5 - (t * 10) % 26 + 6 < 2:
+            return (255, 255, 255)
+        return (214, 218, 228) if k % 3 else (190, 196, 210)
+    if look == "diamond":  # sparkling glints
+        return (255, 255, 255) if (k + int(t * 6)) % 11 == 0 else ((150, 230, 250) if k % 3 else (120, 200, 240))
+    if look == "cosmic":  # swirling purple and blue with gold sparks
+        if (k + int(t * 3)) % 23 == 0:
+            return (255, 230, 150)
+        return hsv_rgb(0.72 + 0.12 * math.sin((math.atan2(r - 3.5, c - 6) + t * 1.2) * 2), 0.7, 0.9)
+    if look == "guardian":  # shield-blue armor plates pulsing, with a shine sweeping across
+        if 0 <= c + r * 0.5 - (t * 9) % 26 + 6 < 1.5:
+            return (230, 246, 255)
+        k2 = 0.5 + 0.5 * math.sin(t * 3 + c * 0.4 + r * 0.6)
+        f = 0.62 + 0.2 * k2 if (c + r % 2) % 3 == 0 else 0.85
+        return tuple(int(v * f) for v in SHIELD_COLOR)
+    if look == "ghost":
+        return (225, 235, 255) if k % 5 else (200, 215, 250)
+    if look == "thunder":  # a storm cloud with zigzag lightning striking somewhere new each time
+        strike = int(t * 3)
+        bolt_on = (t * 3) % 1 < 0.35
+        zig = (0, 1, 1, 0, -1, -1, 0, 1, 1) if strike % 2 else (0, -1, -1, 0, 1, 1, 0, -1, -1)
+        x = 3 + (strike * 5) % 7 + zig[r]
+        if bolt_on and c in (x, x + (1 if r in (3, 6) else 0)):
+            return (255, 236, 110) if (t * 20) % 2 < 1 else (255, 255, 230)
+        lift = 30 if bolt_on else 0
+        return tuple(min(255, v + lift) for v in ((74, 80, 104) if k % 3 else (90, 96, 122)))
+    if look == "love":  # pink, with little hearts that beat: lub-dub, pause
+        beat = t % 1.0
+        if (r, c) in LOVE_HEARTS:
+            return (255, 90, 130) if beat < 0.1 or 0.2 < beat < 0.3 else (220, 60, 100)
+        return (255, 170, 200) if k % 3 else (245, 150, 190)
+    if look == "jackpot":  # rich gold, a sweeping shine and rainbow glints
+        if 0 <= c + r * 0.5 - (t * 11) % 28 + 6 < 2:
+            return (255, 250, 220)
+        if (k + int(t * 5)) % 13 == 0:
+            return hsv_rgb(t * 0.8 + c * 0.1, 0.5, 1)
+        return ((232, 176, 75), (250, 204, 96), (206, 146, 52))[k % 3]
+    if look == "krystal":  # pale crystal facets with rainbow glints
+        if (k + int(t * 5)) % 12 == 0:
+            return hsv_rgb(t * 0.5 + c * 0.08, 0.6, 1)
+        return ((190, 220, 240), (160, 200, 235), (210, 235, 250))[(c // 3 + r // 2) % 3]
+    if look == "kaboom":  # a lit bomb: fuse sparking, seams glowing hotter and faster
+        if r == 0 and c == 6:
+            return ((255, 230, 120), (255, 255, 255), (255, 150, 60))[int(t * 20) % 3]
+        if (r, c) in BOMB_SEAMS:
+            heat = (t % 2.4) / 2.4
+            pulse = 0.5 + 0.5 * math.sin(t * (6 + 20 * heat))
+            return (int(120 + 135 * pulse), int(30 + 60 * heat * pulse), 30)
+        return (50, 46, 60) if k % 3 else (64, 58, 76)
+    if look == "phoenix":  # living fire licking upward
+        flick = math.sin(c * 1.7 + t * 9) + math.sin(c * 0.9 - t * 6 + r) + math.sin(r * 2.1 - t * 12)
+        return PHOENIX_FIRE[max(0, min(len(PHOENIX_FIRE) - 1, int((r / 8) * 3.2 + flick * 0.6)))]
+    if look == "archie":  # stone with moss creeping over him and pulling back
+        if min(r, 8 - r) / 4 + ((k * 37) % 100) / 260 < 0.45 + 0.3 * math.sin(t * 0.7):
+            if (k + int(t * 2)) % 29 == 0:
+                return (230, 240, 170)  # dewdrop
+            if (k + int(t)) % 41 == 0:
+                return (250, 210, 230)  # tiny flower
+            return ((86, 150, 70), (106, 172, 80), (70, 126, 62))[k % 3]
+        return ((138, 134, 128), (118, 114, 110), (152, 148, 140))[k % 3]
+    if look == "obsidian":  # black glass with purple glints sweeping across
+        return (190, 150, 255) if (c + r - int(t * 8)) % 14 == 0 else ((40, 34, 54) if k % 3 else (54, 46, 72))
+    if look == "magnet":  # red and blue poles glowing, with a crackling seam down his middle
+        if c == 6:
+            return (240, 240, 250) if (r + int(t * 10)) % 3 == 0 else (170, 160, 190)
+        glow = 0.5 + 0.5 * math.sin(t * 4 - abs(c - 6) * 0.8)
+        return tuple(min(255, int(v * (0.75 + 0.35 * glow))) for v in (MAGNET_COLOR if c < 6 else (90, 130, 230)))
+    if look == "leo":  # shimmering rainbow
+        return hsv_rgb((c + r) / 18 - t * 0.4, 0.55, 1)
+    return CLAWD
+
+
+def make_skin(look, frame, blink, t, px=PX):
+    """Clawd in a patterned or animated look, drawn fresh (t seconds in)."""
+    surf = pygame.Surface((13 * px, 9 * px), pygame.SRCALPHA)
+    eye = SKIN_EYES.get(look, NIGHT)
+    rows = BODY + ([] if look == "ghost" else LEGS[frame])
+    for r, row in enumerate(rows):
+        for c, ch in enumerate(row):
+            if ch == ".":
+                continue
+            body = skin_pixel(look, r, c, t)
+            color = ((body if r == 2 else eye) if blink else eye) if ch == "E" else body
+            surf.fill(color, (c * px, r * px, px, px))
+    if look == "ghost":  # a wavy tail instead of legs, and see-through, fading in and out
+        for c in range(2, 11):
+            surf.fill((210, 222, 252), (c * px, 7 * px, px, (1 + (math.sin(c * 1.3 - t * 7) > 0)) * px))
+        surf.set_alpha(int(165 + 75 * math.sin(t * 2.2)))
+    return surf
 
 
 class Game:
@@ -467,9 +819,12 @@ class Game:
         self.canvas = pygame.Surface((W, H))
         self.clock = pygame.time.Clock()
         self.fonts = {}
-        self.skin_sprites = [{(f, b): make_clawd(f, b, skin) for f in range(3) for b in (False, True)}
+        # plain and speckled colors are drawn once; patterned and animated ones (a word) every frame
+        self.skin_sprites = [None if isinstance(skin, str) else
+                             {(f, b): make_clawd(f, b, skin) for f in range(3) for b in (False, True)}
                              for _, skin, _ in SKINS]
-        self.skin_icons = [make_clawd(0, False, skin, px=3) for _, skin, _ in SKINS]
+        self.skin_icons = [make_skin(skin, 0, False, 0.0, px=3) if isinstance(skin, str) else
+                           make_clawd(0, False, skin, px=3) for _, skin, _ in SKINS]
         self.skins, self.skin = {0}, 0  # unlocked color indexes, and the one Clawd wears
         self.zaps = self.landings = 0  # progress toward the colors that count over all games
         try:
@@ -487,10 +842,17 @@ class Game:
             a.fill((150, 145, 160, 255), special_flags=pygame.BLEND_RGBA_MULT)
         self.hat_icons = [make_hat(rows, px=3) for _, _, rows in HATS]
         self.unlocked, self.worn = set(), -1  # hat indexes; -1 is no hat
+        # progress toward the hats that count over all games (play time in seconds; days as dates)
+        self.hat_stats = {k: 0.0 for k in TOTAL_STATS}
+        self.hat_stats["days"] = []
         try:
             data = load_save(HATS_FILE)
             self.unlocked = {i for i in data.get("unlocked", []) if isinstance(i, int) and 0 <= i < len(HATS)}
             self.worn = data.get("worn", -1) if data.get("worn", -1) in self.unlocked else -1
+            stats = data.get("stats", {})
+            for key in TOTAL_STATS:
+                self.hat_stats[key] = float(stats.get(key, 0))
+            self.hat_stats["days"] = [d for d in stats.get("days", []) if isinstance(d, str)]
         except (OSError, ValueError, AttributeError, TypeError):
             pass
         self.viewing = self.worn  # hat shown in the title screen picker
@@ -544,11 +906,22 @@ class Game:
     def best(self):
         return max([s["score"] for s in self.scores] + [self.score if self.mode != "title" else 0])
 
+    def personal_best(self):
+        """This player's own best score: kept since stats began, plus their own leaderboard entries from before."""
+        mine = [e["score"] for e in self.scores if str(e.get("key", "")).endswith(f"_{self.board.player_id}")]
+        playing = self.score if self.mode in ("play", "paused", "resume", "entry", "over") else 0
+        return int(max([self.hat_stats["best_score"], playing] + mine))
+
     def qualifies(self):
+        mine = [s["score"] for s in self.scores if player_of(s["key"]) == self.board.player_id]
+        if mine and self.score <= mine[0]:
+            return False  # already on the board with a better score: that spot stays
         return self.score > 0 and (len(self.scores) < TOP_N or self.score > self.scores[-1]["score"])
 
     def game_over(self):
-        self.save_colors()
+        self.hat_stats["best_score"] = max(self.hat_stats["best_score"], self.score)
+        self.hat_stats["total_score"] += self.score
+        self.save_progress()
         self.last_key = None
         self.play("gameover")
         if self.qualifies():
@@ -562,30 +935,33 @@ class Game:
     def submit_name(self):
         name = self.name.strip() or "CLAWD"
         self.name = name
-        self.last_key = self.board.submit(name, self.score)
+        self.last_key = self.board.submit(name, self.score, self.skin)
         pygame.key.stop_text_input()
         self.mode = "over"
 
     def reset(self, mode):
-        self.mode = mode  # title | help | board | home | play | paused | resume | entry | over
+        self.mode = mode  # title | help | board | stats | home | play | paused | resume | entry | over
         self.t = 0.0
         self.score = 0
         self.lives = 3
         self.streak = 0
         self.hearts = []
         self.p = dict(x=W / 2 - PW / 2, y=GROUND - PH, vx=0.0, vy=0.0, on_ground=True,
-                      walk=0.0, blink=0.0, chain=0, jump_buffer=0.0, block_grace=0.0,
+                      walk=0.0, blink=0.0, chain=0, jump_buffer=0.0, block_grace=0.0, sliding=0, slide_t=0.0, slide_panic=False, bj_t=9.0, bj_flip=False, bomb_fx=None, bomb_t=0.0,
                       dash=0.0, dash_dir=0, dash_cd=0.0, dance=0.0, taps=0, tap_gap=0.0)
         self.countdown, self.wake = 0.0, 0.0  # seconds left before play resumes; "!" after waking
+        self.leave_in = None  # seconds left before quitting to the main menu, once MAIN MENU is chosen
         self.purples, self.bombs_hit = 0, 0  # this game's progress toward the purple and red colors
+        self.game_counts = dict(last_loss=0.0, shield_pop_t=-99.0)  # this game's progress toward hats
         self.last_tap = (0, -1.0)
         self.ghosts = []
         self.blocks, self.parts, self.pops = [], [], []
         self.hits = 0
         self.bolts, self.strikes = [], []
         self.magnets, self.magnet = [], 0.0  # pickups falling, seconds of pull left
-        self.boosts, self.speed = [], 0.0  # pickups falling, seconds of speed left
-        self.speed_in = SPEED_COOLDOWN + random.random() * SPEED_RANDOM
+        self.shields, self.shielded = [], False  # pickups falling; a shield saves the next lost life
+        self.shield_in = SHIELD_COOLDOWN + random.random() * SHIELD_RANDOM
+        self.shield_pop, self.shield_edge = None, []  # the outline bursting after a save; its points last frame
         self.runners, self.gold_in = [], random.uniform(*GOLD_EVERY)  # gold blocks crossing the screen
         self.pickup_queue, self.pickup_wait = [], 0.0  # power-ups waiting their turn to drop
         self.trail, self.rings, self.dust = [], [], []
@@ -598,17 +974,41 @@ class Game:
             self.resume()
         else:
             self.reset("play")
+            today = datetime.date.today().isoformat()
+            if today not in self.hat_stats["days"]:
+                self.hat_stats["days"].append(today)
+            self.count("games")
+            self.save_hats()
 
     def pause(self):
         if self.mode in ("play", "resume"):
             self.mode = "paused"
             self.play("snore")
-            self.save_colors()
+            self.save_progress()
 
     def resume(self):
         """Leaving the pause screen: a short countdown while Clawd wakes up, then play goes on."""
+        self.leave_in = None
         self.mode, self.countdown = "resume", RESUME_COUNT
         self.play("tick")
+
+    def ask_leave(self):
+        """MAIN MENU on the pause screen: counts down first, so a slip of the finger can be cancelled."""
+        if self.mode == "paused" and self.leave_in is None:
+            self.leave_in = LEAVE_COUNT
+            self.play("tick")
+
+    def cancel_leave(self):
+        self.leave_in = None
+        self.play("click")
+
+    def leave_to_menu(self):
+        """Quit this game for the main menu. Its stats and best score still count; it isn't posted as a high score."""
+        self.leave_in = None
+        self.hat_stats["best_score"] = max(self.hat_stats["best_score"], self.score)
+        self.hat_stats["total_score"] += self.score
+        self.save_progress()
+        self.reset("title")
 
     def show_board(self):
         self.last_key = None
@@ -722,6 +1122,7 @@ class Game:
             if not p["on_ground"]:
                 p["vy"] = min(p["vy"], 0.0)
             self.play("dash")
+            self.count("dashes")
             self.burst(p["x"] + PW / 2 - d * PW / 2, p["y"] + PH - 4, DIM, 6, 90)
             self.last_tap = (0, -1.0)
         else:
@@ -749,6 +1150,8 @@ class Game:
             if p["taps"] >= DANCE_PRESSES:
                 p["taps"], p["dance"] = 0, DANCE_TIME
                 self.play("hat")
+                self.count("dances")
+                self.save_hats()
 
     def difficulty(self):
         d = min(1.0, self.t / 120)  # ramps over roughly 2 minutes
@@ -756,18 +1159,69 @@ class Game:
 
     def save_hats(self):
         try:
-            write_save(HATS_FILE, dict(unlocked=sorted(self.unlocked), worn=self.worn))
+            write_save(HATS_FILE, dict(unlocked=sorted(self.unlocked), worn=self.worn, stats=self.hat_stats))
         except OSError:
             pass
 
+    def hat_progress(self, need):
+        """How far along a hat's challenge is, and its goal."""
+        if isinstance(need, int):
+            return self.streak, need
+        goal, scope, _ = HAT_GOALS[need]
+        if need == "days":
+            return len(self.hat_stats["days"]), goal
+        if scope == "total":
+            return self.hat_stats[need], goal
+        if need == "hour":
+            return self.t, goal
+        if need == "clean":
+            return self.t - self.game_counts["last_loss"], goal
+        if need == "air100":
+            return self.p["chain"], goal
+        if need in ("score500", "score2000"):
+            return self.score, goal
+        if scope == "event":
+            return (goal if self.mode in ("play", "paused", "resume") and datetime.date.today().month == goal else 0), goal
+        return self.game_counts.get(need, 0), goal
+
+    def count(self, stat, n=1):
+        """Add to a hat challenge's counter (this game's, or the all-games one) and check for unlocks."""
+        if stat in TOTAL_STATS:
+            self.hat_stats[stat] += n
+        else:
+            self.game_counts[stat] = self.game_counts.get(stat, 0) + n
+        self.check_hats()
+
     def check_hats(self):
-        """Unlock any hat whose streak has just been reached, with a notification the first time."""
+        """Unlock any hat whose challenge has just been met, with a notification the first time."""
         for i, (name, need, _) in enumerate(HATS):
-            if self.streak >= need and i not in self.unlocked:
-                self.unlocked.add(i)
-                self.save_hats()
-                self.show_toast(dict(hat=i))
-                self.play("hat")
+            if i not in self.unlocked:
+                have, goal = self.hat_progress(need)
+                if have >= goal:
+                    self.unlocked.add(i)
+                    self.save_hats()
+                    self.show_toast(dict(hat=i))
+                    self.play("hat")
+        self.check_colors()
+
+    def hat_status(self, i):
+        """The line under a hat's name on the menu: what unlocks it (and progress so far) while it's locked."""
+        if i == -1 or i in self.unlocked:
+            return f"HATS {len(self.unlocked)}/{len(HATS)}"
+        need = HATS[i][1]
+        if isinstance(need, int):
+            return f"LOCKED  {need} IN A ROW"
+        goal, scope, label = HAT_GOALS[need]
+        if scope != "total":
+            return f"LOCKED  {label}"
+        have, goal = self.hat_progress(need)
+        if need == "playtime":
+            return f"LOCKED  {label}  {int(have // 60)}/{goal // 60} MIN"
+        return f"LOCKED  {label}  {int(min(have, goal))}/{goal}"
+
+    def save_progress(self):
+        self.save_colors()
+        self.save_hats()
 
     def save_colors(self):
         try:
@@ -792,10 +1246,54 @@ class Game:
         else:
             self.toast = t
 
+    def skin_sprite(self, i, frame, blink, now):
+        look = SKINS[i][1]
+        if isinstance(look, str):
+            return make_skin(look, frame, blink, now / 1000)
+        return self.skin_sprites[i][(frame, blink)]
+
+    def stat_value(self, stat):
+        """How much of something has been done, for the color challenges."""
+        if stat == "month":
+            return datetime.date.today().month if self.mode in ("play", "paused", "resume") else 0
+        if stat in ("score", "streak", "time"):
+            return {"score": self.score, "streak": self.streak, "time": self.t}[stat]
+        if stat == "chain":
+            return self.p["chain"]
+        if stat == "bombs_game":
+            return self.bombs_hit
+        if stat == "bolts":
+            return self.zaps
+        if stat == "landings":
+            return self.landings
+        if stat == "hats":
+            return len(self.unlocked)
+        if stat == "colors":
+            return len(self.skins)
+        if stat == "days":
+            return len(self.hat_stats["days"])
+        return self.hat_stats[stat]
+
+    def check_colors(self):
+        for i, (_, _, key) in enumerate(SKINS):
+            if key in COLOR_GOALS and i not in self.skins:
+                stat, goal, _ = COLOR_GOALS[key]
+                if (self.stat_value(stat) == goal) if stat == "month" else (self.stat_value(stat) >= goal):
+                    self.unlock_color(key)
+
     def color_status(self, i):
         """The second line under a color's name on the menu: progress if it's locked."""
         if i in self.skins:
             return f"COLORS {len(self.skins)}/{len(SKINS)}"
+        key = SKINS[i][2]
+        if key in COLOR_GOALS:
+            stat, goal, label = COLOR_GOALS[key]
+            if stat in GAME_STATS:
+                return f"LOCKED  {label}"
+            have = self.stat_value(stat)
+            if stat == "playtime":
+                return f"LOCKED  {label}  {have / 3600:.1f}/{goal // 3600} HRS"
+            return f"LOCKED  {label}  {int(min(have, goal))}/{goal}"
         return "LOCKED  " + {
             "air": f"{AIR_STREAK} IN A ROW IN THE AIR",
             "purple": f"{PURPLE_GOAL} PURPLE IN ONE GAME",
@@ -806,7 +1304,8 @@ class Game:
 
     def pick_color(self, d):
         """Title screen: cycle through the colors. Locked ones can be looked at but not worn."""
-        self.skin_viewing = (self.skin_viewing + d) % len(SKINS)
+        spot = (COLOR_ORDER.index(self.skin_viewing) + d) % len(SKINS)  # easiest to hardest
+        self.skin_viewing = COLOR_ORDER[spot]
         if self.skin_viewing in self.skins:
             self.skin = self.skin_viewing
             self.save_colors()
@@ -818,7 +1317,7 @@ class Game:
             self.worn = self.viewing
             self.save_hats()
 
-    def queue_pickup(self, kind):  # kind: "hearts", "bolts", "magnets" or "boosts"
+    def queue_pickup(self, kind):  # kind: "hearts", "bolts", "magnets" or "shields"
         """Power-ups drop one at a time; earned ones wait in line."""
         self.pickup_queue.append(kind)
 
@@ -827,23 +1326,67 @@ class Game:
         return min(MAX_MULT, 1 + self.streak // COMBO_STEP)
 
     def spawn(self):
+        """Drop a block or a bomb. Returns False if there was no clear spot this time."""
         fall, _ = self.difficulty()
         d = min(1.0, self.t / 120)
         if self.t > BOMB_AFTER and random.random() < 0.1 + d * 0.08:
             size = 20
-            self.blocks.append(dict(x=12 + random.random() * (W - 24 - size), y=-size, s=size, vy=fall * 0.9,
+            x = self.clear_x(size, fall * 0.9)
+            if x is None:
+                return False
+            self.blocks.append(dict(x=x, y=-size, s=size, vy=fall * 0.9,
                                     c=BOMB_RED, rot=0.0, spin=0.0, dead=False, bomb=True))
-            return
+            return True
         size = 16 + random.randrange(3) * 4
-        self.blocks.append(dict(x=12 + random.random() * (W - 24 - size), y=-size, s=size, vy=fall,
+        x = self.clear_x(size, fall)
+        if x is None:
+            return False
+        self.blocks.append(dict(x=x, y=-size, s=size, vy=fall,
                                 c=random.choice(BLOCK_COLORS), rot=0.0, spin=(random.random() - 0.5) * 70,
                                 dead=False))
+        return True
+
+    def clear_x(self, size, vy):
+        """A random x where something falling at vy won't run into anything already falling,
+        or None if a few tries don't find one."""
+        for _ in range(12):
+            x = 12 + random.random() * (W - 24 - size)
+            for b in self.blocks:
+                if b["dead"] or not (b["x"] - FALL_GAP < x + size and x < b["x"] + b["s"] + FALL_GAP):
+                    continue
+                gap = b["y"] - FALL_GAP  # between the new one's bottom (just above the screen) and b's top
+                if gap <= 0:
+                    break
+                if vy > b["vy"] and gap / (vy - b["vy"]) < (GROUND - b["y"] - b["s"]) / b["vy"]:
+                    break  # would catch up with b before b lands
+            else:
+                return x
+        return None
+
+    def keep_off_bombs(self):
+        """Slide any block that's touching a bomb (the magnet drags blocks around) out beside it."""
+        bombs = [m for m in self.blocks if m.get("bomb") and not m["dead"]]
+        for b in self.blocks:
+            if b.get("bomb") or b["dead"]:
+                continue
+            for m in bombs:
+                if not (b["x"] < m["x"] + m["s"] + FALL_GAP and m["x"] < b["x"] + b["s"] + FALL_GAP
+                        and b["y"] < m["y"] + m["s"] + FALL_GAP and m["y"] < b["y"] + b["s"] + FALL_GAP):
+                    continue
+                right, left = m["x"] + m["s"] + FALL_GAP, m["x"] - b["s"] - FALL_GAP
+                if b["x"] + b["s"] / 2 < m["x"] + m["s"] / 2:
+                    right, left = left, right  # try the side it's already on first
+                b["x"] = right if 0 <= right <= W - b["s"] else left
 
     def hit_block(self, b, air=False, value=1):
         """Score a destroyed block: combo multiplier, air chain bonus, and pickup drops."""
         b["dead"] = True
         self.streak += 1
-        self.check_hats()
+        if self.p["dash"] > 0:
+            self.count("dash_hits")
+        if self.streak == COMBO_STEP * (MAX_MULT - 1):
+            self.count("combo4")  # just reached the top combo
+        self.count("blocks")
         self.hits += 1
         pts = value * self.multiplier
         bx, by = b["x"] + b["s"] / 2, b["y"] + b["s"] / 2
@@ -876,10 +1419,43 @@ class Game:
             self.pops.append(dict(x=W / 2, y=110, life=1.6, txt=f"{self.streak} IN A ROW", c=GOLD))
 
     def lose_life(self):
+        if self.shielded:
+            self.save_by_shield()
+            return
         self.lives -= 1
         self.streak = 0
+        self.game_counts["last_loss"] = self.t
         if self.lives <= 0:
+            if self.t - self.game_counts["shield_pop_t"] <= JESTER_WINDOW:
+                self.count("jester")
             self.game_over()
+
+    def save_by_shield(self):
+        """The shield takes the hit instead of a life: its outline swells out and bursts."""
+        self.shielded = False
+        self.play("heart")
+        self.game_counts["shield_pop_t"] = self.t
+        self.count("shield_saves")
+        p = self.p
+        cx, cy = p["x"] + PW / 2, p["y"] + PH / 2
+        self.shield_pop = 0.0
+        for x, y in self.shield_edge[::6]:  # the outline bursts into specks
+            d = math.hypot(x - cx, y - cy) or 1
+            self.parts.append(dict(x=x, y=y, vx=(x - cx) / d * 140, vy=(y - cy) / d * 140, life=0.4,
+                                   c=random.choice((SHIELD_COLOR, (255, 250, 220))), s=3, g=0))
+        self.pops.append(dict(x=cx, y=p["y"] - 30, life=0.9, txt="SAVED!", c=SHIELD_COLOR, size=14))
+
+    def shield_layer(self, sprite, now):
+        """The shield's outline around a Clawd sprite, 10px bigger on each side; and its edge points."""
+        pts = pygame.mask.from_surface(sprite).outline()
+        layer = pygame.Surface((sprite.get_width() + 20, sprite.get_height() + 20), pygame.SRCALPHA)
+        k = 0.5 + 0.5 * math.sin(now / 200) if SHIELD_STYLE == "glow" else 1.0  # slow breathing
+        if SHIELD_STYLE == "glow":
+            for x, y in pts:
+                layer.fill((*SHIELD_COLOR, int(30 + 50 * k)), (x + 7, y + 7, 7, 7))
+        for x, y in pts:
+            layer.fill((*SHIELD_COLOR, int(160 + 95 * k)), (x + 9, y + 9, 3, 3))
+        return layer, pts
 
     def explode(self, b):
         """Clawd touched a bomb."""
@@ -892,9 +1468,30 @@ class Game:
         self.rings.append(dict(x=bx, y=by, r=8.0, life=0.4, c=BOMB_RED))
         self.pops.append(dict(x=bx, y=by - 16, life=1.0, txt="BOOM", c=BOMB_RED, size=18))
         self.shake = 10
-        self.p["vy"] = min(self.p["vy"], -380)
-        self.p["on_ground"] = False
+        p = self.p
+        bounce = False
+        if by < p["y"] + PH / 2:
+            p["bomb_fx"] = "dizzy"  # bonked it with his head
+        else:
+            p["bomb_fx"] = "hotfoot"  # landed on it: legs kick, flames off his behind
+            self.count("hotfoots")
+            bounce = not p["on_ground"]
+            if bounce:  # bouncing off it counts toward the air chain (no points, still costs a life)
+                p["chain"] += 1
+                if p["chain"] >= AIR_STREAK:
+                    self.unlock_color("air")
+                if p["chain"] >= 2:
+                    self.pops.append(dict(x=bx, y=by - 40, life=0.9, txt=f"AIR x{p['chain']}",
+                                          c=(111, 183, 168), size=11))
+        p["bomb_t"] = 0.0
+        if bounce:
+            self.count("bomb_bounces")
+            self.broke_in_air(bx, by, BOMB_RED)  # same as a block: jump off it, or a little bounce
+        else:
+            p["vy"] = min(p["vy"], -380)
+        p["on_ground"] = False
         self.bombs_hit += 1
+        self.count("bombs")
         if self.bombs_hit >= BOMB_GOAL:
             self.unlock_color("bombs")
         self.lose_life()
@@ -912,6 +1509,10 @@ class Game:
         p = self.p
         p["vy"], p["jump_buffer"], p["block_grace"], p["dash"] = -JUMP_SPEED, 0.0, 0.0, 0.0
         self.play("blockjump")
+        p["bj_t"], p["bj_flip"] = 0.0, abs(p["vx"]) > FLIP_SPEED
+        self.count("jumps")
+        if p["bj_flip"]:
+            self.count("flips")
         self.burst(x, y, color, 10, 160)
         self.rings.append(dict(x=x, y=y, r=6.0, life=0.3, c=color))
         self.ghosts.append([p["x"], p["y"], 0.18])
@@ -920,6 +1521,9 @@ class Game:
         """After a midair hit: jump off the block if jump was just pressed, otherwise a little bounce
         (and a short moment where pressing jump still counts)."""
         p = self.p
+        if color != BOMB_RED:
+            self.count("block_bounces")
+            self.count("block_bounces_total")
         if p["jump_buffer"] > 0:
             self.block_jump(x, y, color)
         else:
@@ -960,6 +1564,8 @@ class Game:
         targets = sorted(safe, key=lambda b: -(b["y"] + b["s"]))[:self.bolt_power]
         if targets and self.bolt_power > BOLT_KILLS:
             self.pops.append(dict(x=W / 2, y=140, life=1.0, txt=f"ZAP x{self.bolt_power}", c=BOLT_COLOR, size=18))
+        if targets:
+            self.count("zapped", len(targets))
         for b in targets:
             b["dead"] = True
             if b["c"] == PURPLE:
@@ -988,7 +1594,7 @@ class Game:
     def update(self, dt, controls):
         for q in self.parts:
             q["life"] -= dt
-            q["vy"] += 900 * dt
+            q["vy"] += q.get("g", 900) * dt  # flames have negative gravity and float up
             q["x"] += q["vx"] * dt
             q["y"] += q["vy"] * dt
             if q["y"] > GROUND:
@@ -1041,6 +1647,14 @@ class Game:
             self.check_in = VERSION_CHECK
             self.check_version()
         self.wake = max(0.0, self.wake - dt)
+        if self.mode == "paused" and self.leave_in is not None:
+            before = math.ceil(self.leave_in)
+            self.leave_in -= dt
+            if self.leave_in <= 0:
+                self.leave_to_menu()
+                return
+            if math.ceil(self.leave_in) < before:
+                self.play("tick")
         if self.mode == "resume":
             before = math.ceil(self.countdown)
             self.countdown -= dt
@@ -1053,14 +1667,20 @@ class Game:
         if self.mode != "play":
             return
         self.t += dt
+        self.hat_stats["playtime"] += dt
+        look = SKINS[self.skin][1]
+        if look == "phoenix" and random.random() < 0.4:  # embers rising off him
+            self.parts.append(dict(x=p["x"] + random.uniform(0, PW), y=p["y"] + random.uniform(0, 10),
+                                   vx=random.uniform(-8, 8), vy=random.uniform(-45, -25), life=0.7,
+                                   c=random.choice(PHOENIX_FIRE[2:]), s=2, g=0))
+        elif look == "love" and random.random() < 0.05:  # little hearts floating up
+            self.parts.append(dict(x=p["x"] + random.uniform(0, PW), y=p["y"], vx=random.uniform(-6, 6),
+                                   vy=random.uniform(-30, -18), life=1.0, c=(255, 120, 160), s=1, g=0, heart=True))
+        self.check_hats()  # the timed ones: an hour in one game, minutes without losing a life
 
         left, right, jump = controls
 
         accel, top = (2600 if p["on_ground"] else 1800), 230
-        if self.speed:
-            accel, top = accel * SPEED_MULT, top * SPEED_MULT
-            if p["vx"] and int(self.t * 60) % 3 == 0:
-                self.ghosts.append([p["x"], p["y"], 0.18])  # afterimages while boosted
         direction = right - left
         p["dash_cd"] -= dt
         for g in self.ghosts:
@@ -1084,16 +1704,21 @@ class Game:
         p["jump_held"] = jump
         p["jump_buffer"] = JUMP_WINDOW if pressed else max(0.0, p["jump_buffer"] - dt)
         p["block_grace"] = max(0.0, p["block_grace"] - dt)
+        p["bj_t"] += dt
         wall = -1 if p["x"] <= 2 else (1 if p["x"] >= W - PW - 2 else 0)
+        was_sliding, p["sliding"] = p["sliding"], 0
         if jump and p["on_ground"]:
             p["vy"], p["on_ground"], p["jump_buffer"] = -JUMP_SPEED, False, 0.0
             self.play("jump")
+            self.count("jumps")
         elif pressed and p["block_grace"] > 0 and not p["on_ground"]:
             self.block_jump(*p["grace_at"])  # jump pressed just after breaking a block
         elif pressed and wall and not p["on_ground"]:
             # wall jump: kick off the screen edge, up and away
             p["vy"], p["vx"], p["jump_buffer"] = -WALL_JUMP, -wall * WALL_KICK, 0.0
             self.play("walljump")
+            self.count("jumps")
+            self.count("walljumps")
             p["dash"] = 0.0
             wx = 0 if wall < 0 else W
             for _ in range(10):
@@ -1105,9 +1730,21 @@ class Game:
         elif wall and wall == direction and not p["on_ground"] and p["vy"] > WALL_SLIDE:
             # wall slide: holding into the wall slows the fall
             p["vy"] = WALL_SLIDE
-            if random.random() < 0.5:
+            if not was_sliding:
+                p["slide_t"], p["slide_panic"] = 0.0, random.random() < SLIDE_PANIC
+            p["sliding"] = wall
+            p["slide_t"] += dt
+            if random.random() < (0.9 if p["slide_panic"] else 0.5):
                 self.parts.append(dict(x=0 if wall < 0 else W, y=p["y"] + PH - 6, vx=-wall * random.uniform(10, 40),
-                                       vy=random.uniform(-40, 0), life=0.3, c=DIM, s=2))
+                                       vy=random.uniform(-40, 0), life=0.3, c=INK if p["slide_panic"] else DIM, s=2))
+        p["bomb_t"] += dt
+        if (p["bomb_fx"] == "dizzy" and p["bomb_t"] > DIZZY_TIME
+                or p["bomb_fx"] == "hotfoot" and (p["bomb_t"] > HOTFOOT_TIME or p["on_ground"])):
+            p["bomb_fx"] = None
+        if p["bomb_fx"] == "hotfoot" and random.random() < 0.9:  # flames off his behind
+            self.parts.append(dict(x=p["x"] + PW / 2 + random.uniform(-14, 14), y=p["y"] + PH - 4,
+                                   vx=random.uniform(-25, 25), vy=random.uniform(-30, 60), life=0.3,
+                                   c=random.choice(FIRE), s=random.choice((4, 5, 6)), g=-250))
         if not p["on_ground"] and not jump and p["vy"] < -200:
             p["vy"] = -200  # short hop on early release
 
@@ -1119,7 +1756,14 @@ class Game:
         if p["x"] > W - PW:
             p["x"], p["vx"] = W - PW, 0.0
         if p["y"] < 64:  # keep Clawd under the HUD
+            if not self.game_counts.get("sky"):
+                self.count("sky")
+            if not p.get("at_sky"):
+                p["at_sky"] = True  # each separate touch of the top counts
+                self.count("sky_total")
             p["y"], p["vy"] = 64, max(p["vy"], 0.0)
+        elif p["y"] > 90:
+            p["at_sky"] = False
         if p["y"] >= GROUND - PH:
             if not p["on_ground"]:
                 self.landings += 1
@@ -1154,21 +1798,32 @@ class Game:
                     and r["y"] < p["y"] + PH - 6 and r["y"] + r["s"] > p["y"]):
                 r["dead"] = True
                 self.hit_block(dict(r, c=GOLD), air=not p["on_ground"], value=GOLD_POINTS)
+                self.count("golds")
+                self.count("golds_total")
                 if not p["on_ground"]:
                     self.broke_in_air(r["x"] + r["s"] / 2, r["y"] + r["s"] / 2, GOLD)
                 self.burst(r["x"] + r["s"] / 2, r["y"] + r["s"] / 2, BOLT_COLOR, 20, 260)
                 self.rings.append(dict(x=r["x"] + r["s"] / 2, y=r["y"] + r["s"] / 2, r=6.0, life=0.4, c=GOLD))
+                self.pops.append(dict(x=max(90, min(W - 90, r["x"] + r["s"] / 2)), y=r["y"] - 30,
+                                      life=JACKPOT_TIME, txt="JACKPOT!", c=GOLD, size=26, jackpot=True))
                 self.shake = max(self.shake, 4)
             elif r["x"] < -30 or r["x"] > W + 10:
                 r["dead"] = True  # got away, no penalty
         self.runners = [r for r in self.runners if not r.get("dead")]
         self.magnet = max(0.0, self.magnet - dt)
-        self.speed = max(0.0, self.speed - dt)
+        if self.shield_pop is not None:
+            self.shield_pop += dt
+            if self.shield_pop > 0.3:
+                self.shield_pop = None
+        if self.shielded and SHIELD_STYLE == "sparkles" and self.shield_edge and random.random() < 0.35:
+            x, y = random.choice(self.shield_edge)  # sparkles drift up off the outline
+            self.parts.append(dict(x=x, y=y, vx=random.uniform(-8, 8), vy=random.uniform(-50, -25), life=0.6,
+                                   c=random.choice((SHIELD_COLOR, (255, 250, 220))), s=2, g=0))
 
         self.spawn_in -= dt
         if self.spawn_in <= 0:
-            self.spawn()
-            self.spawn_in = self.difficulty()[1] * (0.75 + random.random() * 0.5)
+            # no clear spot: try again in a moment
+            self.spawn_in = self.difficulty()[1] * (0.75 + random.random() * 0.5) if self.spawn() else 0.1
 
         pcx = p["x"] + PW / 2
         for b in self.blocks:
@@ -1203,6 +1858,7 @@ class Game:
                 self.lose_life()
                 if self.lives <= 0:
                     break
+        self.keep_off_bombs()
         self.blocks = [b for b in self.blocks if not b["dead"]]
 
         # heart pickups drift down with a gentle sway; missing one costs nothing
@@ -1214,6 +1870,7 @@ class Game:
                 h["dead"] = True
                 self.burst(hx, h["y"], CLAWD, 20, 200)
                 self.play("heart")
+                self.count("hearts")
                 if self.lives < MAX_LIVES:
                     self.lives += 1
                     self.pops.append(dict(x=hx, y=h["y"] - 10, life=1.0, txt="+1 LIFE", c=CLAWD))
@@ -1248,6 +1905,7 @@ class Game:
                 m["dead"] = True
                 self.magnet = MAGNET_TIME
                 self.play("magnet")
+                self.count("magnets_total")
                 self.burst(mx, m["y"], MAGNET_COLOR, 18, 200)
                 self.rings.append(dict(x=pcx, y=p["y"] + PH / 2, r=8.0, life=0.4, c=MAGNET_COLOR))
                 self.pops.append(dict(x=mx, y=m["y"] - 14, life=1.0, txt="MAGNET", c=MAGNET_COLOR, size=14))
@@ -1256,35 +1914,35 @@ class Game:
                 self.burst(mx, GROUND - 4, MAGNET_COLOR, 8, 100)
         self.magnets = [m for m in self.magnets if not m["dead"]]
 
-        # speed pickups drop at random times, at least SPEED_COOLDOWN seconds apart
-        if "boosts" not in self.pickup_queue:
-            self.speed_in -= dt
-            if self.speed_in <= 0:
-                self.queue_pickup("boosts")
+        # shield pickups drop at random times, at least SHIELD_COOLDOWN seconds apart
+        if "shields" not in self.pickup_queue:
+            self.shield_in -= dt
+            if self.shield_in <= 0:
+                self.queue_pickup("shields")
         self.pickup_wait -= dt
         if self.pickup_queue and self.pickup_wait <= 0:
             self.pickup_wait = PICKUP_GAP
             kind = self.pickup_queue.pop(0)
-            if kind == "boosts":  # the cooldown counts from when it actually drops
-                self.speed_in = SPEED_COOLDOWN + random.random() * SPEED_RANDOM
+            if kind == "shields":  # the cooldown counts from when it actually drops
+                self.shield_in = SHIELD_COOLDOWN + random.random() * SHIELD_RANDOM
             getattr(self, kind).append(dict(x=40 + random.random() * (W - 80), y=-24.0, t=0.0, dead=False))
 
-        # speed pickups: catching one makes Clawd run faster for a few seconds
-        for o in self.boosts:
+        # shield pickups: catching one saves Clawd's next lost life (they don't stack)
+        for o in self.shields:
             o["t"] += dt
-            o["y"] += SPEED_FALL * dt
+            o["y"] += SHIELD_FALL * dt
             ox = o["x"] + math.sin(o["t"] * 2.4) * 12
             if ox - 12 < p["x"] + PW - 4 and ox + 12 > p["x"] + 4 and o["y"] - 9 < p["y"] + PH - 6 and o["y"] + 9 > p["y"]:
                 o["dead"] = True
-                self.speed = SPEED_TIME
+                self.shielded = True
                 self.play("speed")
-                self.burst(ox, o["y"], SPEED_COLOR, 18, 200)
-                self.rings.append(dict(x=pcx, y=p["y"] + PH / 2, r=8.0, life=0.4, c=SPEED_COLOR))
-                self.pops.append(dict(x=ox, y=o["y"] - 14, life=1.0, txt="SPEED", c=SPEED_COLOR, size=14))
+                self.burst(ox, o["y"], SHIELD_COLOR, 18, 200)
+                self.rings.append(dict(x=pcx, y=p["y"] + PH / 2, r=8.0, life=0.4, c=SHIELD_COLOR))
+                self.pops.append(dict(x=ox, y=o["y"] - 14, life=1.0, txt="SHIELD", c=SHIELD_COLOR, size=14))
             elif o["y"] + 9 >= GROUND:
                 o["dead"] = True
-                self.burst(ox, GROUND - 4, SPEED_COLOR, 8, 100)
-        self.boosts = [o for o in self.boosts if not o["dead"]]
+                self.burst(ox, GROUND - 4, SHIELD_COLOR, 8, 100)
+        self.shields = [o for o in self.shields if not o["dead"]]
 
     # ---------- draw ----------
     def text(self, s, x, y, size, color, align="center", surf=None):
@@ -1362,10 +2020,11 @@ class Game:
                 self.text("JUMP", cx, cy + 22, 12, col, surf=s)
 
     def pixel_sprite(self, rows, x, y, size, color):
+        """color is one RGB, or a dict of RGB per character for art with more than one color."""
         for r, row in enumerate(rows):
             for k, ch in enumerate(row):
                 if ch != ".":
-                    self.canvas.fill(color, (x + k * size, y + r * size, size, size))
+                    self.canvas.fill(color[ch] if isinstance(color, dict) else color, (x + k * size, y + r * size, size, size))
 
     def pixel_heart(self, x, y, size, color):
         for r, row in enumerate(HEART):
@@ -1388,9 +2047,46 @@ class Game:
             y = top + 32 + i * 22
             mine = self.mode == "over" and s.get("key") == self.last_key
             col = CLAWD if mine else INK
+            skin = s.get("skin")
+            name_col = TIER_COLOR[skin] if skin is not None and skin in TIER_COLOR else col  # by the color they wore
             self.text(f"{i + 1}.", 92, y, 13, col if mine else DIM, "right")
-            self.text(s["name"], 104, y, 13, col, "left")
+            self.text(s["name"], 104, y, 13, name_col, "left")
             self.text(str(s["score"]), W - 80, y, 13, col, "right")
+            if mine:
+                self.text(">", 70, y, 13, CLAWD, "right")  # your new score
+
+    def stat_rows(self):
+        """Everything the stats page shows: (label, value)."""
+        st = self.hat_stats
+        hours, mins = divmod(int(st["playtime"] // 60), 60)
+        n = lambda v: f"{int(v):,}"
+        return [
+            ("GAMES PLAYED", n(st["games"])), ("PLAY TIME", f"{hours}H {mins:02d}M"),
+            ("DAYS PLAYED", n(len(st["days"]))), ("MY BEST SCORE", n(self.personal_best())),
+            ("TOTAL SCORE", n(st["total_score"])),
+            ("BLOCKS BROKEN", n(st["blocks"])), ("GOLD CAUGHT", n(st["golds_total"])),
+            ("HEARTS CAUGHT", n(st["hearts"])), ("MAGNETS CAUGHT", n(st["magnets_total"])),
+            ("BOLTS CAUGHT", n(self.zaps)),
+            ("BLOCKS ZAPPED", n(st["zapped"])), ("SHIELD SAVES", n(st["shield_saves"])),
+            ("BOMBS HIT", n(st["bombs"])), ("HOT FOOTS", n(st["hotfoots"])),
+            ("BOMB BOUNCES", n(st["bomb_bounces"])), ("BLOCK BOUNCES", n(st["block_bounces_total"])),
+            ("COMBO X4", n(st["combo4"])), ("JUMPS", n(st["jumps"])),
+            ("WALL JUMPS", n(st["walljumps"])), ("DASHES", n(st["dashes"])),
+            ("DASH HITS", n(st["dash_hits"])), ("LANDINGS", n(self.landings)),
+            ("SKY TOUCHES", n(st["sky_total"])), ("DANCES", n(st["dances"])),
+            ("HATS", f"{len(self.unlocked)}/{len(HATS)}"), ("COLORS", f"{len(self.skins)}/{len(SKINS)}"),
+        ]
+
+    def draw_stats(self):
+        """Two columns of totals over every game played."""
+        self.text("STATS", W / 2, 60, 20, GOLD)
+        rows = self.stat_rows()
+        half = (len(rows) + 1) // 2
+        for i, (label, value) in enumerate(rows):
+            col, row = divmod(i, half)
+            x, y = 22 + col * 190, 100 + row * 28
+            self.text(label, x, y, 9, DIM, "left")
+            self.text(value, x + 176, y, 11, GOLD if label in ("MY BEST SCORE", "TOTAL SCORE", "HATS", "COLORS") else INK, "right")
 
     def draw_help(self):
         c = self.canvas
@@ -1430,8 +2126,8 @@ class Game:
                     c.fill(MAGNET_TIP if ch == "T" else MAGNET_COLOR, (64 + k * 3, y - 10 + r * 3, 3, 3))
         self.text("pulls blocks to you", 96, y, 10, DIM, "left")
         y += 22
-        self.pixel_sprite(SPEED, 64, y - 7, 3, SPEED_COLOR)
-        self.text("run faster for a while", 96, y, 10, DIM, "left")
+        self.pixel_sprite(SHIELD_ICON, 65, y - 10, 3, SHIELD_PIXELS)
+        self.text("saves your next lost life", 96, y, 10, DIM, "left")
 
     def draw_zzz(self, body, now):
         """Little Zs drifting up from a sleeping Clawd."""
@@ -1524,6 +2220,10 @@ class Game:
         if self.mode == "title" and not p["dance"] > 0:
             p["y"] = GROUND - PH - abs(math.sin(now / 300)) * 18
         frame = 0 if not p["on_ground"] or not p["vx"] else 1 + int(p["walk"] / 18) % 2
+        sliding = p["sliding"]
+        panic = sliding and p["slide_panic"]
+        if panic or p["bomb_fx"] == "hotfoot":
+            frame = 1 + int(now / 45) % 2  # legs flail
         hop = sway = 0
         if p["dance"] > 0:
             p["y"] = GROUND - PH
@@ -1535,19 +2235,36 @@ class Game:
             sway = (3 if beat % 2 else -3)
         asleep = self.mode in ("paused", "resume")
         skin = self.skin_viewing if self.mode == "title" else self.skin
-        sprite = self.skin_sprites[skin][(frame, p["blink"] > 0 or asleep)]
+        sprite = self.skin_sprite(skin, frame, p["blink"] > 0 or asleep or panic or p["bomb_fx"] == "dizzy", now)
         if skin not in self.skins:
             sprite = sprite.copy()
             sprite.fill((150, 145, 160, 255), special_flags=pygame.BLEND_RGBA_MULT)  # locked: dimmed
-        squash = -0.05 if not p["on_ground"] else 0
+        squash = -0.05 if not p["on_ground"] and not sliding else 0
         if asleep:
             squash = 0.04 * math.sin(now / 700)  # slow breathing
         if squash:
             sprite = pygame.transform.scale(sprite, (int(PW * (1 + squash)), int(PH * (1 - squash))))
+        if p["bj_flip"] and p["bj_t"] < 0.45 and not p["on_ground"]:
+            spin = -1 if p["vx"] >= 0 else 1  # flip toward where Clawd is heading
+            sprite = pygame.transform.rotate(sprite, spin * 360 * p["bj_t"] / 0.45)
+        elif not p["bj_flip"] and p["bj_t"] < 0.31:
+            # spring off the block: squash flat on impact, then stretch tall and settle
+            if p["bj_t"] < 0.06:
+                sx, sy = 1.3, 0.7
+            else:
+                k = 1 - (p["bj_t"] - 0.06) / 0.25
+                sx, sy = 1 - 0.2 * k, 1 + 0.3 * k
+            sprite = pygame.transform.scale(sprite, (int(PW * sx), int(PH * sy)))
         if p["dance"] > 0:
             sprite = pygame.transform.rotate(sprite, 12 if beat % 2 else -12)  # wiggle with the beat
+        if panic:
+            sway, hop = random.choice((-1, 0, 1)), random.choice((-1, 0, 1))  # shaking
+        elif sliding:
+            # feet and arm braced on the wall, wobbling to keep balance
+            lean = min(1.0, p["slide_t"] / 0.12) * (SLIDE_LEAN + 5 * math.sin(p["slide_t"] * 9))
+            sprite = pygame.transform.rotate(sprite, sliding * lean)
         for gx, gy, life in self.ghosts:
-            ghost = self.skin_sprites[self.skin][(0, False)].copy()
+            ghost = self.skin_sprite(self.skin, 0, False, now).copy()
             ghost.set_alpha(int(255 * life / 0.18 * 0.4))
             c.blit(ghost, (round(gx) + ox, round(gy) + oy))
         if self.magnet:
@@ -1559,13 +2276,38 @@ class Game:
         shadow = pygame.Surface((PW - 12, 4), pygame.SRCALPHA)
         shadow.fill((*NIGHT, 64))
         c.blit(shadow, (p["x"] + 6 + ox, GROUND - 2 + oy))
+        if SKINS[skin][1] == "ghost":
+            hop += math.sin(now / 400) * 3  # floats
         body = sprite.get_rect(midbottom=(round(p["x"] + PW / 2 + sway) + ox, round(p["y"] + PH + hop) + oy))
+        if sliding and not panic:
+            # press the tilted sprite's visible pixels flat against the wall
+            vis = sprite.get_bounding_rect()
+            body.x = (W - vis.right if sliding > 0 else -vis.left) + ox
+            body.y = round(p["y"] + PH) - vis.bottom + oy
+        if self.shielded and self.mode in ("play", "paused", "resume"):
+            layer, edge = self.shield_layer(sprite, now)
+            c.blit(layer, (body.x - 10, body.y - 10))
+            self.shield_edge = [(x + body.x - ox, y + body.y - oy) for x, y in edge]
+        elif self.shield_pop is not None and self.shield_edge:
+            # the outline swells out and fades after a save
+            layer, _ = self.shield_layer(sprite, now)
+            scale = 1 + self.shield_pop * 2.5
+            layer = pygame.transform.scale(layer, (int(layer.get_width() * scale), int(layer.get_height() * scale)))
+            layer.set_alpha(int(255 * (1 - self.shield_pop / 0.3)))
+            c.blit(layer, layer.get_rect(center=body.center))
         clawd = [(sprite, body)]
         hat = self.viewing if self.mode == "title" else self.worn
         if hat >= 0:
             art = self.hat_art[hat] if hat in self.unlocked else self.hat_shadow[hat]
             clawd.append((art, art.get_rect(midbottom=(body.centerx, body.top))))
         c.blits(clawd)
+        if p["bomb_fx"] == "dizzy" and self.mode == "play":
+            top = body.top - (10 if hat >= 0 else 0)
+            for k in range(3):  # stars circling his head
+                a = p["bomb_t"] * 7 + k * math.tau / 3
+                sx, sy = int(body.centerx + math.cos(a) * 18), int(top - 8 + math.sin(a) * 5)
+                c.fill(GOLD, (sx - 3, sy - 1, 7, 3))
+                c.fill(GOLD, (sx - 1, sy - 3, 3, 7))
 
         for q in self.dust:
             r = int(q["r"])
@@ -1578,7 +2320,10 @@ class Game:
             rect.center = (q["x"] + ox, q["y"] + oy)
             pygame.draw.ellipse(c, col, rect, 2)
         for q in self.parts:
-            c.fill(q["c"], (q["x"] + ox, q["y"] + oy, q["s"], q["s"]))
+            if q.get("heart"):
+                self.pixel_heart(q["x"] + ox, q["y"] + oy, 1, q["c"])
+            else:
+                c.fill(q["c"], (q["x"] + ox, q["y"] + oy, q["s"], q["s"]))
         for q in self.strikes:
             pts = [(x + ox, y + oy) for x, y in q["pts"]]
             k = q["life"] / 0.35
@@ -1625,13 +2370,13 @@ class Game:
                     if ch != ".":
                         col = MAGNET_TIP if ch == "T" else MAGNET_COLOR
                         c.fill(col, (mx - 10 + k * 3 + ox, m["y"] - 10 + r * 3 + oy, 3, 3))
-        for o in self.boosts:
+        for o in self.shields:
             bx = o["x"] + math.sin(o["t"] * 2.4) * 12
             pulse = 1 + 0.15 * math.sin(o["t"] * 9)
             glow = pygame.Surface((44, 44), pygame.SRCALPHA)
-            pygame.draw.circle(glow, (*SPEED_COLOR, 55), (22, 22), int(17 * pulse))
+            pygame.draw.circle(glow, (*SHIELD_COLOR, 55), (22, 22), int(17 * pulse))
             c.blit(glow, (bx - 22 + ox, o["y"] - 22 + oy))
-            self.pixel_sprite(SPEED, bx - 12 + ox, o["y"] - 7 + oy, 3, SPEED_COLOR)
+            self.pixel_sprite(SHIELD_ICON, bx - 10 + ox, o["y"] - 10 + oy, 3, SHIELD_PIXELS)
         for h in self.hearts:
             hx = h["x"] + math.sin(h["t"] * 2) * 14
             pulse = 1 + 0.12 * math.sin(h["t"] * 8)
@@ -1641,6 +2386,19 @@ class Game:
             self.pixel_heart(hx - 10 + ox, h["y"] - 9 + oy, 3, CLAWD)
 
         for q in self.pops:
+            if q.get("jackpot"):
+                # pops in big, wobbles and shimmers through the rainbow
+                a = JACKPOT_TIME - q["life"]
+                f = self.font(q["size"])
+                rainbow = [int(v * 255) for v in colorsys.hsv_to_rgb(now / 650 % 1, 0.5, 1)]
+                img = f.render(q["txt"], False, rainbow)
+                art = pygame.Surface((img.get_width() + 2, img.get_height() + 2), pygame.SRCALPHA)
+                art.blit(f.render(q["txt"], False, NIGHT), (2, 2))
+                art.blit(img, (0, 0))
+                scale = max(0.1, 1 + 0.8 * math.exp(-a * 10) * math.cos(a * 30))
+                art = pygame.transform.rotozoom(art, 6 * math.sin(a * 14) * math.exp(-a * 3), scale)
+                c.blit(art, art.get_rect(center=(q["x"] + ox, q["y"] + oy)))
+                continue
             self.text(q["txt"], q["x"] + ox, q["y"] + oy, q.get("size", 14), q["c"])
         if self.wake > 0 and self.mode == "play":
             self.text("!", body.centerx, body.top - 18 - (8 if self.worn >= 0 else 0), 20, GOLD)
@@ -1652,6 +2410,8 @@ class Game:
 
         for i in range(max(3, self.lives)):
             self.pixel_heart(14 + i * 26, 16, 3, CLAWD if i < self.lives else EARTH)
+        if self.shielded and self.mode in ("play", "paused"):
+            self.pixel_sprite(SHIELD_ICON, 14 + max(3, self.lives) * 26, 15, 3, SHIELD_PIXELS)
         # streak meter: fills toward the next heart drop
         if self.mode in ("play", "paused"):
             fill = (self.streak % HEART_STREAK) / HEART_STREAK
@@ -1661,11 +2421,9 @@ class Game:
                 label = f"STREAK {self.streak}" + (f"  x{self.multiplier}" if self.multiplier > 1 else "")
                 self.text(label, 14, 54, 10, GOLD if self.streak >= 10 else DIM, "left")
             bar_y = 66
-            for left, total, col in ((self.magnet, MAGNET_TIME, MAGNET_COLOR), (self.speed, SPEED_TIME, SPEED_COLOR)):
-                if left:
-                    c.fill(EARTH, (14, bar_y, 124, 4))
-                    c.fill(col, (14, bar_y, int(124 * left / total), 4))
-                    bar_y += 8
+            if self.magnet:
+                c.fill(EARTH, (14, bar_y, 124, 4))
+                c.fill(MAGNET_COLOR, (14, bar_y, int(124 * self.magnet / MAGNET_TIME), 4))
         self.text(str(self.score), W - 16, 26, 22, INK, "right")
         self.text(f"BEST {self.best}", W - 16, 48, 10, DIM, "right")
 
@@ -1681,14 +2439,15 @@ class Game:
                 self.text("hit the blocks before they land", W / 2, 272 - up, 12, DIM)
                 if TOUCH:
                     self.button("PLAY", W / 2, 282, 150, 44, self.start, 18, CLAWD)
-                    self.button("HOW TO PLAY", W / 2 - 92, 328, 170, 30, self.go("help"), 10)
-                    self.button("HIGH SCORES", W / 2 + 92, 328, 170, 30, self.show_board, 10)
+                    self.button("HOW TO PLAY", W / 2 - 122, 328, 112, 30, self.go("help"), 9)
+                    self.button("SCORES", W / 2, 328, 112, 30, self.show_board, 9)
+                    self.button("STATS", W / 2 + 122, 328, 112, 30, self.go("stats"), 9)
                     if not self.on_home_screen:
                         self.button("ADD TO HOME SCREEN", W / 2, 366, 354, 30, self.go("home"), 10, GOLD)
                 else:
                     if blink_on:
                         self.text("PRESS SPACE", W / 2, 330, 16, INK)
-                    self.text("I  HELP     H  SCORES     M  SOUND", W / 2, 362, 10, DIM)
+                    self.text("I  HELP    H  SCORES    S  STATS    M  SOUND", W / 2, 362, 10, DIM)
                 if self.update_ready:
                     if TOUCH:
                         self.rainbow_button("NEW VERSION  TAP TO UPDATE", W / 2, 80, 300, 28, self.update_now, 10, now)
@@ -1697,7 +2456,7 @@ class Game:
                 self.text(build_label(self.build), W - 16, 64, 8, DIM, "right")
                 # color picker, in the dirt under Clawd
                 cname = SKINS[self.skin_viewing][0]
-                ccol = skin_color(self.skin_viewing) if self.skin_viewing in self.skins else DIM
+                ccol = TIER_COLOR[self.skin_viewing]  # the name's color shows how hard it is to get
                 if TOUCH:
                     self.button("<", 30, 536, 44, 36, lambda: self.pick_color(-1), 14, DIM)
                     self.button(">", W - 30, 536, 44, 36, lambda: self.pick_color(1), 14, DIM)
@@ -1707,18 +2466,16 @@ class Game:
                 self.text(self.color_status(self.skin_viewing), W / 2, 545, 9, DIM)
                 if self.viewing == -1:
                     name, col = "NO HAT", DIM
-                elif self.viewing in self.unlocked:
-                    name, col = HATS[self.viewing][0], GOLD
                 else:
-                    name, col = f"LOCKED  {HATS[self.viewing][1]} IN A ROW", DIM
+                    name, col = HATS[self.viewing][0], GOLD if self.viewing in self.unlocked else DIM
                 if TOUCH:
                     self.button("<", 30, 406, 44, 36, lambda: self.pick_hat(-1), 14, DIM)
                     self.button(">", W - 30, 406, 44, 36, lambda: self.pick_hat(1), 14, DIM)
                     self.text(name, W / 2, 400, 11, col)
-                    self.text(f"HATS {len(self.unlocked)}/{len(HATS)}", W / 2, 416, 9, DIM)
+                    self.text(self.hat_status(self.viewing), W / 2, 416, 9, DIM)
                 else:
                     self.text(f"<  {name}  >", W / 2, 398, 11, col)
-                    self.text(f"HATS {len(self.unlocked)}/{len(HATS)}", W / 2, 414, 9, DIM)
+                    self.text(self.hat_status(self.viewing), W / 2, 414, 9, DIM)
                 c.blits(clawd)  # Clawd stays bright on the title so the hat picker is easy to see
             elif self.mode == "home":
                 self.draw_home_help()
@@ -1730,6 +2487,13 @@ class Game:
                     self.button("PLAY", W / 2 + 76, 454, 140, 34, self.start, 12, CLAWD)
                 elif blink_on:
                     self.text("SPACE TO PLAY   ESC TO GO BACK", W / 2, 446, 11, DIM)
+            elif self.mode == "stats":
+                self.draw_stats()
+                if TOUCH:
+                    self.button("BACK", W / 2 - 76, 476, 140, 34, self.go("title"), 12, DIM)
+                    self.button("PLAY", W / 2 + 76, 476, 140, 34, self.start, 12, CLAWD)
+                elif blink_on:
+                    self.text("SPACE TO PLAY   ESC TO GO BACK", W / 2, 476, 11, DIM)
             elif self.mode == "board":
                 self.draw_table(110)
                 if TOUCH:
@@ -1745,12 +2509,24 @@ class Game:
                     grow = 1 + 0.4 * (self.countdown - n + 1) ** 3  # each number pops in, then settles
                     self.text(str(n), W / 2, 220, int(56 * grow), GOLD)
                     self.text("WAKING UP", W / 2, 280, 13, DIM)
+                elif self.leave_in is not None:
+                    n = math.ceil(self.leave_in)
+                    grow = 1 + 0.4 * (self.leave_in - n + 1) ** 3
+                    self.text("BACK TO MENU IN", W / 2, 170, 13, DIM)
+                    self.text(str(n), W / 2, 225, int(56 * grow), CLAWD)
+                    if TOUCH:
+                        self.button("CANCEL", W / 2, 300, 170, 44, self.cancel_leave, 16, INK)
+                    else:
+                        self.text("SPACE OR ESC TO CANCEL", W / 2, 290, 13, INK)
                 else:
                     self.text("PAUSED", W / 2, 220, 40, INK)
                     if TOUCH:
                         self.button("RESUME", W / 2, 290, 170, 44, self.resume, 16, CLAWD)
-                    elif blink_on:
-                        self.text("PRESS SPACE TO RESUME", W / 2, 280, 13, DIM)
+                        self.button("MAIN MENU", W / 2, 346, 170, 36, self.ask_leave, 12, DIM)
+                    else:
+                        if blink_on:
+                            self.text("PRESS SPACE TO RESUME", W / 2, 280, 13, DIM)
+                        self.text("Q  MAIN MENU", W / 2, 310, 11, DIM)
             elif self.mode == "entry":
                 top_before = max([s["score"] for s in self.scores] + [0])
                 self.text("GAME OVER", W / 2, 150, 40, CLAWD)
@@ -1760,7 +2536,8 @@ class Game:
                 box = pygame.Rect(W / 2 - 120, 306, 240, 36)
                 c.fill(NIGHT, box)
                 pygame.draw.rect(c, CLAWD, box, 2)
-                self.text(self.name + ("_" if blink_on and len(self.name) < NAME_LEN else " "), W / 2, 324, 18, INK)
+                self.text(self.name + ("_" if blink_on and len(self.name) < NAME_LEN else " "), W / 2, 324, 18,
+                          TIER_COLOR[self.skin])  # your name, in the tier color of what you're wearing
                 self.text("TAP OK TO SAVE" if TOUCH else "ENTER TO SAVE", W / 2, 362, 11, DIM)
             else:
                 self.text("GAME OVER", W / 2, 70, 34, CLAWD)
@@ -1810,7 +2587,7 @@ class Game:
             for e in pygame.event.get():
                 if e.type == pygame.QUIT:
                     if self.mode in ("play", "resume", "paused"):
-                        self.save_colors()
+                        self.save_progress()
                     return
                 if e.type in (pygame.WINDOWFOCUSLOST, pygame.WINDOWHIDDEN, pygame.WINDOWMINIMIZED):
                     self.pause()
@@ -1857,10 +2634,13 @@ class Game:
                     if e.key == pygame.K_i and self.mode == "title":
                         self.mode = "help"
                         continue
+                    if e.key == pygame.K_s and self.mode == "title":
+                        self.mode = "stats"
+                        continue
                     if e.key == pygame.K_ESCAPE and self.mode == "over":
                         self.reset("title")
                         continue
-                    if e.key == pygame.K_ESCAPE and self.mode in ("board", "help"):
+                    if e.key == pygame.K_ESCAPE and self.mode in ("board", "help", "stats"):
                         self.mode = "title"
                         continue
                     if self.mode == "title" and e.key in (pygame.K_LEFT, pygame.K_a, pygame.K_RIGHT, pygame.K_d):
@@ -1870,6 +2650,13 @@ class Game:
                         self.tap_direction(-1)
                     elif e.key in (pygame.K_RIGHT, pygame.K_d):
                         self.tap_direction(1)
+                    if self.mode == "paused" and self.leave_in is not None:
+                        if e.key in (pygame.K_SPACE, pygame.K_RETURN, pygame.K_ESCAPE, pygame.K_p, pygame.K_q):
+                            self.cancel_leave()
+                        continue
+                    if e.key == pygame.K_q and self.mode == "paused":
+                        self.ask_leave()
+                        continue
                     if e.key in (pygame.K_p, pygame.K_ESCAPE):
                         if self.mode in ("play", "resume"):
                             self.pause()
