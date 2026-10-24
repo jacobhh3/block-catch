@@ -1149,7 +1149,7 @@ class Game:
         self.blocks, self.parts, self.pops = [], [], []
         self.hits = 0
         self.bolts, self.strikes = [], []
-        self.charges = 0  # stored bolts, used with down / S or the ZAP button
+        self.charges = 0  # stored bolts, used with E or the ZAP button
         self.magnets, self.magnet = [], 0.0  # pickups falling, seconds of pull left
         self.shields, self.shielded = [], False  # pickups falling; a shield saves the next lost life
         self.shield_in = SHIELD_COOLDOWN + random.random() * SHIELD_RANDOM
@@ -1784,7 +1784,7 @@ class Game:
             self.zap()
 
     def use_charge(self):
-        """Down / S or the ZAP button: spend a stored bolt. Kept if there's nothing to hit."""
+        """E or the ZAP button: spend a stored bolt. Kept if there's nothing to hit."""
         if self.mode != "play" or not self.charges or not any(not b.get("bomb") for b in self.blocks):
             return
         self.charges -= 1
@@ -2335,7 +2335,7 @@ class Game:
             ("CONTROLS", [("ARROWS", "move"), ("JUMP" if TOUCH else "UP", "jump"),
                           ("BLOCKS", "jump as you hit one"),
                           ("TAP TAP", "dash left or right"), ("WALL", "jump again off the edge"),
-                          ("ZAP" if TOUCH else "DOWN", "use a stored bolt")]),
+                          ("ZAP" if TOUCH else "E", "use a stored bolt")]),
             ("SCORING", [("COMBO", "every 10 in a row adds x1"), ("AIR CHAIN", "hit more before landing"),
                          ("GOLD", "jump to catch it  +10")]),
             ("WATCH OUT", [("BOMBS", "never touch them"), ("3 MISSES", "and you are out")]),
@@ -2897,7 +2897,7 @@ class Game:
                         self.tap_direction(-1)
                     elif e.key in (pygame.K_RIGHT, pygame.K_d):
                         self.tap_direction(1)
-                    elif e.key in (pygame.K_DOWN, pygame.K_s) and self.mode == "play":
+                    elif e.key == pygame.K_e and self.mode == "play":
                         self.use_charge()
                     if self.mode == "paused" and self.leave_in is not None:
                         if e.key in (pygame.K_SPACE, pygame.K_RETURN, pygame.K_ESCAPE, pygame.K_p, pygame.K_q):
