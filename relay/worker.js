@@ -4,6 +4,8 @@
 //   GET /add/<name>/<score>/<skin>  adds a score with the color the player wore (kept in dreamlo's text field)
 //   GET /json/<count>               the top scores, as dreamlo's JSON
 //   GET /week/<count>               this week's top scores (weeks start Monday 12am Eastern), as JSON
+//   GET /daily/add/<name>/<score>/<skin>  a Daily Challenge score; only a player's first of the day counts
+//   GET /daily/<count>              today's Daily Challenge board, and yesterday's top 10 (its #1 wears the crown)
 //   GET /delete/<name>              removes a score; needs the X-Admin-Key header to match the ADMIN_KEY secret
 //                                   (run delete_score.py rather than calling this by hand)
 //   POST /sync                      starts a cross save from a progress update (see mergeSync); replies with its code
@@ -21,13 +23,25 @@ async function isAdmin(request, env) {
   return crypto.subtle.timingSafeEqual(a, b);
 }
 
-// ---------- weekly board ----------
-export function weekStart(now = new Date()) {
-  // the Monday (in Eastern time) the current week began on, as YYYY-MM-DD
+// ---------- dates (boards turn over at midnight Eastern) ----------
+function easternDate(now) {
   const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit",
   }).formatToParts(now).map((x) => [x.type, x.value]));
-  const day = new Date(Date.UTC(+p.year, +p.month - 1, +p.day));
+  return new Date(Date.UTC(+p.year, +p.month - 1, +p.day));
+}
+
+export function easternDay(now = new Date(), back = 0) {
+  // today's date in Eastern time (or back days before it), as YYYY-MM-DD
+  const day = easternDate(now);
+  day.setUTCDate(day.getUTCDate() - back);
+  return day.toISOString().slice(0, 10);
+}
+
+// ---------- weekly board ----------
+export function weekStart(now = new Date()) {
+  // the Monday (in Eastern time) the current week began on, as YYYY-MM-DD
+  const day = easternDate(now);
   day.setUTCDate(day.getUTCDate() - (day.getUTCDay() + 6) % 7);
   return day.toISOString().slice(0, 10);
 }
@@ -48,6 +62,26 @@ async function topOfWeek(env, count) {
   const entries = Object.entries(board).map(([name, e]) => ({ name, score: e.score, skin: e.skin }))
     .sort((a, b) => b.score - a.score).slice(0, count);
   return { week, entries };
+}
+
+// ---------- Daily Challenge ----------
+const playerOf = (key) => key.slice(key.lastIndexOf("_") + 1); // names are NAME_<player id>
+
+export async function recordDaily(env, key, score, skin, now = new Date()) {
+  // one try a day: a player's first score of the day stands, whatever name or device they use next
+  const dk = "day:" + easternDay(now);
+  const board = (await env.STORE.get(dk, "json")) || {};
+  if (Object.keys(board).some((k) => playerOf(k) === playerOf(key))) return false;
+  board[key] = { score, skin };
+  await env.STORE.put(dk, JSON.stringify(board), { expirationTtl: 3 * DAY });
+  return true;
+}
+
+async function dailyBoard(env, count, now = new Date()) {
+  const top = async (day, n) => Object.entries((await env.STORE.get("day:" + day, "json")) || {})
+    .map(([name, e]) => ({ name, score: e.score, skin: e.skin })).sort((a, b) => b.score - a.score).slice(0, n);
+  const day = easternDay(now), yesterday = easternDay(now, 1);
+  return { day, entries: await top(day, count), yesterday: { day: yesterday, entries: await top(yesterday, 10) } };
 }
 
 // ---------- cross save ----------
@@ -123,6 +157,17 @@ export default {
       }
       return new Response("bad code", { status: 400, headers });
     }
+    if (parts[0] === "daily" && env.STORE) {
+      if (parts[1] === "add" && parts.length === 5 && parts[2].length <= 60 && /^\d{1,9}$/.test(parts[3])
+          && /^\d{1,3}$/.test(parts[4])) {
+        const ok = await recordDaily(env, decodeURIComponent(parts[2]), +parts[3], +parts[4]);
+        return new Response(ok ? "OK" : "ALREADY PLAYED TODAY", { headers });
+      }
+      if (parts.length === 2 && /^\d{1,3}$/.test(parts[1])) {
+        const board = await dailyBoard(env, Math.min(100, +parts[1]));
+        return new Response(JSON.stringify(board), { headers: { ...headers, "Content-Type": "application/json" } });
+      }
+    }
     if (parts[0] === "week" && parts.length === 2 && /^\d{1,3}$/.test(parts[1]) && env.STORE) {
       const top = await topOfWeek(env, Math.min(100, +parts[1]));
       return new Response(JSON.stringify(top), { headers: { ...headers, "Content-Type": "application/json" } });
@@ -147,6 +192,9 @@ export default {
         const wk = "week:" + weekStart();
         const board = (await env.STORE.get(wk, "json")) || {};
         if (delete board[decodeURIComponent(parts[1])]) await env.STORE.put(wk, JSON.stringify(board), { expirationTtl: 21 * DAY });
+        const dk = "day:" + easternDay();
+        const today = (await env.STORE.get(dk, "json")) || {};
+        if (delete today[decodeURIComponent(parts[1])]) await env.STORE.put(dk, JSON.stringify(today), { expirationTtl: 3 * DAY });
       }
     }
     if (!target) {
