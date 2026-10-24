@@ -160,6 +160,10 @@ SKINS = [
     ("OBSIDIAN OWEN", "obsidian", "hours50"),
     ("LEGENDARY LEO", "leo", "everything"),
     ("MAGNETIC MILO", "magnet", "magnets1000"),
+    # earned only in the Daily Challenge
+    ("DAYBREAK DAISY", [(255, 190, 120), (255, 160, 140), (250, 210, 140)], "dailies7"),
+    ("STREAKY SADIE", [(240, 110, 60), (250, 170, 60), (220, 80, 60)], "dailystreak14"),
+    ("CHAMPION CHASE", [(255, 220, 110), (255, 245, 200), (232, 176, 75)], "dailywin"),
 ]
 # A color challenge: (what's counted, goal, what the menu says). See Game.stat_value for the counts.
 COLOR_GOALS = {
@@ -199,6 +203,9 @@ COLOR_GOALS = {
     "days100": ("days", 100, "PLAY ON 100 DIFFERENT DAYS"),
     "hours50": ("playtime", 50 * 3600, "PLAY FOR 50 HOURS"),
     "magnets1000": ("magnets_total", 1000, "CATCH 1000 MAGNETS"),
+    "dailies7": ("dailies", 7, "PLAY 7 DAILY CHALLENGES"),
+    "dailystreak14": ("daily_streak", 14, "14-DAY DAILY STREAK"),
+    "dailywin": ("daily_wins", 1, "WIN A DAILY (#1 WHEN THE DAY ENDS)"),
     "everything": ("colors", 0, "UNLOCK EVERY OTHER COLOR"),  # goal filled in below
 }
 COLOR_GOALS["everything"] = ("colors", len(SKINS) - 1, "UNLOCK EVERY OTHER COLOR")
@@ -210,11 +217,13 @@ COLOR_TIERS = [
     ((120, 210, 140), ["CLAWD", "PUMPKIN PETE", "FROSTY FRANK", "OBSESSED OSCAR", "RAGING RYAN", "AIRTIME RICKY",
                        "MINTY MAYA", "COTTON CANDY CARL"]),  # common
     ((127, 200, 255), ["TOXIC TONY", "GOLDEN GABE", "LAVA LUKE", "SMOKY SAM", "LIGHTNING LANGLEY", "EARTHQUAKE BEN",
-                       "CHERRY CHLOE", "BUBBLEGUM BELLA", "OCEAN OLIVIA", "SLIME STEVE", "NINJA NICK"]),  # uncommon
-    ((232, 176, 75), ["ZEBRA ZACK", "NEON NOAH", "CAMO CODY", "PEACHY PAIGE"]),  # rare
+                       "CHERRY CHLOE", "BUBBLEGUM BELLA", "OCEAN OLIVIA", "SLIME STEVE", "NINJA NICK",
+                       "DAYBREAK DAISY"]),  # uncommon
+    ((232, 176, 75), ["ZEBRA ZACK", "NEON NOAH", "CAMO CODY", "PEACHY PAIGE", "STREAKY SADIE"]),  # rare
     ((240, 110, 90), ["TROPICAL TRISTEN", "PLATINUM PARKER", "BLOCKBUSTER BRAD", "GHOST GARY", "STARLIGHT STELLA",
                       "ROBO ROB", "DIAMOND DANI", "GALAXY GRACE", "KABOOM KEVIN", "PHOENIX PHIL", "THUNDER THEO",
-                      "JACKPOT JACK", "HEARTFELT HOPE", "COSMIC COLE", "KRYSTAL KAI", "MAGNETIC MILO"]),  # very rare
+                      "JACKPOT JACK", "HEARTFELT HOPE", "COSMIC COLE", "KRYSTAL KAI", "MAGNETIC MILO",
+                      "CHAMPION CHASE"]),  # very rare
     ((200, 140, 255), ["GUARDIAN GRANT", "ANCIENT ARCHIE", "OBSIDIAN OWEN", "LEGENDARY LEO"]),  # legendary
 ]
 _SKIN_INDEX = {sk[0]: i for i, sk in enumerate(SKINS)}
@@ -312,6 +321,27 @@ def _bright(rows, cols, a, b):
     return ["".join(b if ch == a and c in cols else ch for c, ch in enumerate(row)) for row in rows]
 
 
+_ALARM = ["..rR.....Rr..", "...RWWWWWR...", "..RWWWZWWWR..", "..RWWWZWWWR..", "..RWWWWZZWR..", "...RWWWWWR...",
+          "...Z.....Z..."]
+_TROPHY = ["...YYYYYYY...", ".Y.YwYYYYY.Y.", ".YYYwYYYYYYY.", "...YYYYYYY...", "....yYYYy....", ".....YYY.....",
+           "....yyyyy...."]
+
+
+def _hourglass(n):
+    """The hourglass with n of its 9 grains of sand run through to the bottom."""
+    rows = [list(r) for r in ["..TTTTTTTTT..", "...l.....l...", "....l...l....", ".....l.l.....", ".............",
+                              ".....l.l.....", "....l...l....", "...l.....l...", "..TTTTTTTTT.."]]
+    top = [(1, c) for c in range(4, 9)] + [(2, c) for c in range(5, 8)] + [(3, 6)]  # drains from the top down
+    bottom = [(7, c) for c in range(4, 9)] + [(6, c) for c in range(5, 8)] + [(5, 6)]  # fills from the bottom up
+    for r, c in top[n:]:
+        rows[r][c] = "Y"
+    for r, c in bottom[:n]:
+        rows[r][c] = "Y"
+    if 0 < n < 9:
+        rows[4][6] = "y"  # the trickle
+    return ["".join(r) for r in rows]
+
+
 _PHARAOH = [".....YYY.....", "...YYYwYYY...", "..BBBBBBBBB..", ".YYYYYYYYYYY.", ".BB.......BB.", ".YY.......YY.",
             ".BB.......BB.", ".YY.......YY."]
 
@@ -397,6 +427,13 @@ HATS = [
     ("LIGHTNING CROWN", "bolts2000", _LIGHTNING_CROWN),
     ("SCRAP CROWN", "magnets2000", _SCRAP_CROWN),
     ("SHIELD CROWN", "shields250", _SHIELD_CROWN),
+    # earned only in the Daily Challenge
+    ("ALARM CLOCK", "dailies3", _ALARM),
+    ("CALENDAR", "dailystreak7", ["...Z.....Z...", "..RRRRRRRRR..", "..RRRRRRRRR..", "..WWWWWWWWW..", "..WWZZZZWWW..",
+                                  "..WWWWWZWWW..", "..WWWWZWWWW..", "..WWWWZWWWW..", "..WWWWWWWWW.."]),
+    ("LAUREL WREATH", "dailytop10", ["..e.......e..", ".eE.......Ee.", ".Ee.......eE.", "..eE.....Ee..", "...eEYYYEe..."]),
+    ("TROPHY", "dailywin", _TROPHY),
+    ("HOURGLASS", "dailies30", _hourglass(0)),
 ]
 # animated hats: (frames per second, frames). The propeller only spins while he's in the air.
 HAT_ANIM = {
@@ -431,6 +468,11 @@ HAT_ANIM = {
     "SHIELD CROWN": (3, [_bright(_SHIELD_CROWN, range(c, c + 3), "l", "B") for c in (1, 5, 9)]),
     "PHARAOH": (3, [_PHARAOH, [row.translate(str.maketrans("YB", "BY")) for row in _PHARAOH]]),
 }
+HAT_ANIM.update({
+    "ALARM CLOCK": (8, [_ALARM] * 10 + [_with(_ALARM, (0, ".rR.......Rr.")), _ALARM] * 3),  # rings now and then
+    "TROPHY": (4, [_TROPHY, _with(_TROPHY, (0, "w..YYYYYYY...")), _TROPHY, _with(_TROPHY, (0, "...YYYYYYY..w"))]),
+    "HOURGLASS": (3, [_hourglass(n) for n in range(10)] + [_hourglass(9)] * 3),
+})
 HAT_AIR_ONLY = {"PROPELLER CAP"}
 HAT_SPRING = {"SPROUT"}  # bends and wobbles as Clawd moves (see Game.swing_sprout)
 HAT_BOB = {"UFO": 5, "STORM CLOUD": 3, "DISCO BALL": 3}  # floating hats drift up and down this many pixels
@@ -438,7 +480,7 @@ HAT_BOB = {"UFO": 5, "STORM CLOUD": 3, "DISCO BALL": 3}  # floating hats drift u
 HAT_DROP = {"WELDING MASK": 5, "USHANKA": 3, "SPACE HELMET": 5, "KNIGHT HELMET": 5, "PIRATE HAT": 4,
             "HEADPHONES": 3, "NINJA BAND": 3, "VIKING HELMET": 2, "KING'S CROWN": 1, "DRAGON HELM": 5,
             "SAMURAI HELMET": 2, "SUNGLASSES": 4, "BOW": 1, "FEZ": 1,
-            "VALKYRIE HELM": 1, "PHARAOH": 4, "DEMOLITION HAT": 1, "HEART CROWN": 1,
+            "VALKYRIE HELM": 1, "PHARAOH": 4, "DEMOLITION HAT": 1, "CALENDAR": 1, "LAUREL WREATH": 1, "HEART CROWN": 1,
             "LIGHTNING CROWN": 1, "SCRAP CROWN": 1, "SHIELD CROWN": 1}
 # brimmed hats sit one row down, resting on his head
 HAT_DROP.update({n: 1 for n in ["BALL CAP", "COWBOY HAT", "TOP HAT", "ARMY HELMET", "CHEF HAT", "BEANIE", "HARD HAT",
@@ -493,7 +535,16 @@ HAT_GOALS = {
     "magnets2000": (2000, "total", "CATCH 2000 MAGNETS"),
     "shields250": (250, "total", "GET SAVED BY 250 SHIELDS"),
     "hotfoots1000": (1000, "total", "GET 1000 HOT FOOTS"),
+    "dailies3": (3, "total", "PLAY 3 DAILY CHALLENGES"),
+    "dailystreak7": (7, "total", "7-DAY DAILY STREAK"),
+    "dailytop10": (1, "total", "FINISH A DAILY IN THE TOP 10"),
+    "dailywin": (1, "total", "WIN A DAILY (#1 WHEN THE DAY ENDS)"),
+    "dailies30": (30, "total", "PLAY 30 DAILY CHALLENGES"),
 }
+# the daily-only hats count Daily Challenge results (see Game.daily_stat), not things done in normal games
+HAT_DAILY = {"dailies3": "dailies", "dailystreak7": "daily_streak", "dailytop10": "daily_top10",
+             "dailywin": "daily_wins", "dailies30": "dailies"}
+DAILY_STATS = {"dailies", "daily_streak", "daily_top10", "daily_wins"}
 HAT_GOALS["allhats"] = (len(HATS) - 1, "total", "UNLOCK EVERY OTHER HAT")
 # challenges that read another challenge's counter (a second, bigger goal for the same thing)
 HAT_STAT = {"walljumps200": "walljumps", "sky500": "sky_total", "playtime10": "playtime", "games25": "games",
@@ -501,20 +552,21 @@ HAT_STAT = {"walljumps200": "walljumps", "sky500": "sky_total", "playtime10": "p
             "blocks25000": "blocks", "hearts2000": "hearts", "magnets2000": "magnets_total",
             "shields250": "shield_saves", "hotfoots1000": "hotfoots"}
 # everything counted over all games (saved with the hats)
-TOTAL_STATS = [k for k, (_, scope, _) in HAT_GOALS.items() if scope == "total" and k not in ("days", "days30", "allhats", "bolts2000") and k not in HAT_STAT] + [
+TOTAL_STATS = [k for k, (_, scope, _) in HAT_GOALS.items() if scope == "total" and k not in ("days", "days30", "allhats", "bolts2000") and k not in HAT_STAT and k not in HAT_DAILY] + [
     "golds_total", "block_bounces_total", "combo4", "dash_hits", "best_score", "total_score"]
 # hat tiers (TIER_NAMES), like the colors': the picker goes easiest to hardest and names are colored by tier
 HAT_TIERS = [
     ((120, 210, 140), ["PARTY HAT", "BALL CAP", "COWBOY HAT", "TOP HAT"]),  # the original streak hats
     ((127, 200, 255), ["CROWN", "BEANIE", "CHEF HAT", "WIZARD HAT", "KNIGHT HELMET", "NINJA BAND", "SUNGLASSES", "BOW",
-                       "FEZ"]),
+                       "FEZ", "ALARM CLOCK"]),
     ((232, 176, 75), ["VIKING HELMET", "DEVIL HORNS", "BUNNY EARS", "SPROUT", "USHANKA", "HEADPHONES",
-                      "CAPTAIN HAT", "SANTA HAT", "WITCH HAT", "FIREFIGHTER"]),
+                      "CAPTAIN HAT", "SANTA HAT", "WITCH HAT", "FIREFIGHTER", "CALENDAR"]),
     ((240, 110, 90), ["PIRATE HAT", "HARD HAT", "FLOWER CROWN", "ROBOT ANTENNA", "MUSHROOM CAP", "WELDING MASK",
-                      "CAT EARS", "GRAD CAP", "SOMBRERO", "PROPELLER CAP", "HALO", "JESTER HAT"]),
+                      "CAT EARS", "GRAD CAP", "SOMBRERO", "PROPELLER CAP", "HALO", "JESTER HAT", "LAUREL WREATH"]),
     ((200, 140, 255), ["ARMY HELMET", "SPACE HELMET", "DRAGON HELM", "UFO", "FLAME CROWN", "SAMURAI HELMET",
                        "STORM CLOUD", "VALKYRIE HELM", "DISCO BALL", "DEMOLITION HAT", "PHARAOH", "HEART CROWN",
-                       "LIGHTNING CROWN", "SCRAP CROWN", "SHIELD CROWN", "KING'S CROWN"]),  # king's crown last: it needs every other hat
+                       "LIGHTNING CROWN", "SCRAP CROWN", "SHIELD CROWN", "TROPHY", "HOURGLASS",
+                       "KING'S CROWN"]),  # king's crown last: it needs every other hat
 ]
 _HAT_INDEX = {h[0]: i for i, h in enumerate(HATS)}
 HAT_ORDER = [_HAT_INDEX[name] for _, names in HAT_TIERS for name in names]
@@ -1343,6 +1395,8 @@ class Game:
         self.mode = mode  # title | help | board | stats | home | play | paused | resume | entry | over
         if mode != "play":
             self.daily = None
+        elif not self.daily:
+            self.last_daily = False  # a normal game: its one-game challenges count again
         # gameplay's dice: seeded with the date in a Daily Challenge, so everyone gets the same blocks
         self.rng = random.Random(zlib.crc32(daily_day().encode()) if self.daily else None)
         self.t = 0.0
@@ -1649,12 +1703,16 @@ class Game:
     def hat_progress(self, need):
         """How far along a hat's challenge is, and its goal."""
         if isinstance(need, int):
-            return self.streak, need
+            return (0 if self.daily or self.last_daily else self.streak), need
         goal, scope, _ = HAT_GOALS[need]
+        if scope in ("game", "event") and (self.daily or self.last_daily):
+            return 0, goal  # one-game challenges only count normal games, not a Daily Challenge
         if need in ("days", "days30"):
             return len(self.hat_stats["days"]), goal
         if need in HAT_STAT:
             return self.hat_stats[HAT_STAT[need]], goal
+        if need in HAT_DAILY:
+            return self.daily_stat(HAT_DAILY[need]), goal
         if need == "allhats":
             return len(self.unlocked - {_HAT_INDEX["KING'S CROWN"]}), goal
         if need == "airtime":
@@ -1755,6 +1813,10 @@ class Game:
 
     def stat_value(self, stat):
         """How much of something has been done, for the color challenges."""
+        if stat in DAILY_STATS:
+            return self.daily_stat(stat)
+        if stat in GAME_STATS and (self.daily or self.last_daily):
+            return 0  # one-game challenges only count normal games
         if stat == "month":
             return datetime.date.today().month if self.mode in ("play", "paused", "resume") else 0
         if stat in ("score", "streak", "time"):
@@ -1846,6 +1908,7 @@ class Game:
         self.play("gameover")
         if self.sync["code"]:
             self.sync_now()
+        self.check_hats()  # the daily-only hats and colors (a streak, or a number of dailies played)
         if self.board.name:
             self.last_key = self.board.submit_daily(self.board.name, self.score, self.skin)
             self.mode = "over"
@@ -1907,6 +1970,26 @@ class Game:
             else:
                 self.text("H  TODAY'S SCORES    ESC  BACK", W / 2, 352, 10, DIM)
 
+    def daily_stat(self, stat):
+        info = self.daily_info
+        return {"dailies": len(set(info["days"])), "daily_streak": self.daily_streak()[1],
+                "daily_top10": len(set(info["top10"])), "daily_wins": len(set(info["wins"]))}[stat]
+
+    def check_daily_results(self):
+        """Yesterday's final top 10 (sent with the daily board): placing in it, or winning, earns daily rewards."""
+        top = self.board.yesterday
+        yday = (eastern_now().date() - datetime.timedelta(days=1)).isoformat()
+        if not top or yday in self.daily_info["top10"] or yday not in self.daily_info["days"]:
+            return
+        ids = [player_of(k) for k in top]
+        if self.board.player_id in ids:
+            self.daily_info["top10"].append(yday)
+            if ids[0] == self.board.player_id:
+                self.daily_info["wins"].append(yday)
+                self.notice = dict(txt="YOU WON YESTERDAY'S DAILY!", life=3.0)
+            self.save_daily()
+            self.check_hats()
+
     def daily_streak(self):
         """(current, best): days in a row with a daily played. Current still counts if today's isn't played yet."""
         days = sorted({datetime.date.fromisoformat(d) for d in self.daily_info["days"]})
@@ -1956,7 +2039,9 @@ class Game:
             self.save_sync()
         update = dict(device=s["device"], req=s["inflight"]["req"], add=s["inflight"]["add"],
                       max=dict(best_score=self.hat_stats["best_score"]),
-                      union=dict(hats=sorted(self.unlocked), colors=sorted(self.skins), days=list(self.hat_stats["days"])),
+                      union=dict(hats=sorted(self.unlocked), colors=sorted(self.skins), days=list(self.hat_stats["days"]),
+                                 daily_days=self.daily_info["days"], daily_wins=self.daily_info["wins"],
+                                 daily_top10=self.daily_info["top10"]),
                       player_id=self.board.player_id, name=self.board.name)
         url, body, joining = f"{LB_URL}sync" + (f"/{target}" if target else ""), json.dumps(update), bool(code)
         self.sync_busy, self.sync_status = True, "SYNCING..."
@@ -1994,6 +2079,10 @@ class Game:
         self.unlocked |= {i for i in union.get("hats", []) if isinstance(i, int) and 0 <= i < len(HATS)}
         self.skins |= {i for i in union.get("colors", []) if isinstance(i, int) and 0 <= i < len(SKINS)}
         self.hat_stats["days"] = sorted(set(self.hat_stats["days"]) | {d for d in union.get("days", []) if isinstance(d, str)})
+        for mine, theirs in (("days", "daily_days"), ("wins", "daily_wins"), ("top10", "daily_top10")):
+            # a daily played on any linked device counts (and uses up that day's try everywhere)
+            self.daily_info[mine] = sorted(set(self.daily_info[mine]) | {d for d in union.get(theirs, []) if isinstance(d, str)})
+        self.save_daily()
         if isinstance(data.get("player_id"), str) and data["player_id"] and data["player_id"] != self.board.player_id:
             self.board.player_id = data["player_id"]  # one player on the leaderboard, whichever device they use
             self.board.save()
@@ -2624,6 +2713,8 @@ class Game:
     def update(self, dt, controls):
         if self.sync_reply:
             self.finish_sync()
+        if self.mode in ("title", "daily", "board", "over", "gallery"):
+            self.check_daily_results()
         self.swing_sprout(dt)
         if self.mode in ("play", "title"):
             self.set_trail(dt)
@@ -3135,6 +3226,8 @@ class Game:
             ("WALL JUMPS", n(st["walljumps"])), ("DASHES", n(st["dashes"])),
             ("DASH HITS", n(st["dash_hits"])), ("LANDINGS", n(self.landings)),
             ("SKY TOUCHES", n(st["sky_total"])), ("DANCES", n(st["dances"])),
+            ("DAILIES PLAYED", n(self.daily_stat("dailies"))), ("BEST DAILY STREAK", n(self.daily_streak()[1])),
+            ("DAILY TOP 10S", n(self.daily_stat("daily_top10"))), ("DAILY WINS", n(self.daily_stat("daily_wins"))),
             ("HATS", f"{len(self.unlocked)}/{len(HATS)}"), ("COLORS", f"{len(self.skins)}/{len(SKINS)}"),
         ]
 
@@ -3145,7 +3238,7 @@ class Game:
         half = (len(rows) + 1) // 2
         for i, (label, value) in enumerate(rows):
             col, row = divmod(i, half)
-            x, y = 22 + col * 190, 100 + row * 28
+            x, y = 22 + col * 190, 96 + row * 22
             self.text(label, x, y, 9, DIM, "left")
             self.text(value, x + 176, y, 11, GOLD if label in ("MY BEST SCORE", "TOTAL SCORE", "HATS", "COLORS") else INK, "right")
 
