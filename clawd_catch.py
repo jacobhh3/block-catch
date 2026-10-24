@@ -13,6 +13,7 @@ import sys
 import threading
 import urllib.parse
 import urllib.request
+import zlib
 
 import pygame
 
@@ -544,6 +545,13 @@ SETS = [
 assert all(h in _HAT_INDEX for _, hs, _, _, _ in SETS for h in hs)
 assert all(c in _SKIN_INDEX for _, _, cs, _, _ in SETS for c in cs)
 GALLERY_COLS, GALLERY_ROWS, GALLERY_CELL = 6, 5, 58
+# Daily Challenge: one run a day, the same for everyone (blocks come from a dice roll seeded with the date),
+# with a twist from this list, and one try. Days turn over at midnight Eastern, like the weekly board.
+TWISTS = [
+    ("FAST BLOCKS", "BLOCKS FALL FASTER"), ("LOW GRAVITY", "FLOATY JUMPS"), ("SUPER SPEED", "CLAWD RUNS FASTER"),
+    ("DOUBLE BOMBS", "TWICE THE BOMBS"), ("ONE LIFE", "NO SECOND CHANCES"), ("EARLY BOMBS", "BOMBS FROM THE START"),
+    ("GIANT BLOCKS", "EVERY BLOCK IS BIG"), ("TINY BLOCKS", "EVERY BLOCK IS SMALL"), ("MIRROR", "LEFT IS RIGHT"),
+]
 CARD_W, CARD_H = 600, 320  # the score card image made for sharing
 SITE = "jacobhh3.github.io/block-catch"  # the gallery's grid of hats or colors, a page at a time
 JESTER_WINDOW = 3.0  # seconds after a shield pops that losing your last life earns the jester hat
@@ -605,7 +613,8 @@ OLD_BEST_FILE = os.path.join(SAVE_DIR, "best.txt")
 HATS_FILE = os.path.join(SAVE_DIR, "hats.json")
 COLORS_FILE = os.path.join(SAVE_DIR, "colors.json")
 SETTINGS_FILE = os.path.join(SAVE_DIR, "settings.json")
-SYNC_FILE = os.path.join(SAVE_DIR, "sync.json")  # cross save: this device's code and what it has sent
+SYNC_FILE = os.path.join(SAVE_DIR, "sync.json")
+DAILY_FILE = os.path.join(SAVE_DIR, "daily.json")  # Daily Challenge: days played, wins, top 10 finishes  # cross save: this device's code and what it has sent
 SYNC_CHARS = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"  # sync codes use these (no 0/O or 1/I/L to mix up)
 SITE_URL = "https://jacobhh3.github.io/block-catch/"
 VERSION_CHECK = 300  # seconds between checks for a newer build on the website
@@ -750,6 +759,7 @@ class Leaderboard:
         self.status = "connecting"  # connecting | online | offline
         self.scores, self.pending, self.name, self.player_id = [], [], "", ""
         self.weekly = []  # this week's best, one per player (from the relay; empty until it answers)
+        self.daily, self.yesterday, self.pending_daily = [], [], []  # today's daily board, yesterday's top 10 keys
         self.syncing, self.again, self.requests = False, False, 0
         if WEB:
             platform.window.eval(WEB_FETCH_JS)
@@ -758,6 +768,7 @@ class Leaderboard:
             if "player_id" in data:
                 self.scores = [s for s in data.get("scores", []) if isinstance(s.get("score"), int)]
                 self.pending = data.get("pending", [])
+                self.pending_daily = [p for p in data.get("pending_daily", []) if isinstance(p, dict)]
             else:
                 # first run after going online: upload the scores this PC already had
                 self.pending = [dict(name=s["name"], score=s["score"]) for s in data.get("scores", [])
@@ -776,13 +787,26 @@ class Leaderboard:
     def save(self):
         try:
             write_save(SCORES_FILE, dict(scores=self.scores, pending=self.pending, last_name=self.name,
-                                         player_id=self.player_id))
+                                         player_id=self.player_id, pending_daily=self.pending_daily))
         except OSError:
             pass
 
-    def snapshot(self, weekly=False):
+    def snapshot(self, which="all"):
         with self.lock:
-            return list(self.weekly if weekly else self.scores)
+            return list({"week": self.weekly, "day": self.daily}.get(which, self.scores))
+
+    def submit_daily(self, name, score, skin):
+        """Today's Daily Challenge score: shown right away, sent in the background (only the first one counts)."""
+        key = self.key_for(name)
+        with self.lock:
+            self.name = name
+            self.pending_daily.append(dict(name=name, score=score, skin=skin, day=daily_day()))
+            if not any(player_of(e["key"]) == self.player_id for e in self.daily):
+                self.daily = sorted(self.daily + [dict(key=key, name=name, score=score, skin=skin)],
+                                    key=lambda e: -e["score"])
+            self.save()
+        self.refresh()
+        return key
 
     def key_for(self, name):
         return f"{name}_{self.player_id}"
@@ -884,6 +908,24 @@ class Leaderboard:
                                     skin=p.get("skin")))
                 self.status = "online"
                 self.save()
+            try:  # Daily Challenge scores waiting to go up (a day that has passed can't be posted any more)
+                with self.lock:
+                    todo = list(self.pending_daily)
+                for p in todo:
+                    if p.get("day") == daily_day():
+                        key = urllib.parse.quote(self.key_for(p["name"]), safe="")
+                        await self._get(f"{LB_URL}daily/add/{key}/{int(p['score'])}/{int(p.get('skin', 0))}")
+                    with self.lock:
+                        self.pending_daily.remove(p)
+                        self.save()
+                day = json.loads(await self._get(f"{LB_URL}daily/{LB_FETCH}"))
+                rows = [dict(key=r["name"], name=display_name(r["name"]), score=int(r["score"]),
+                             skin=skin_number(r.get("skin"))) for r in day.get("entries", [])]
+                with self.lock:
+                    self.daily = best_per_player(rows)
+                    self.yesterday = [r["name"] for r in (day.get("yesterday") or {}).get("entries", [])]
+            except (OSError, ValueError, KeyError, TypeError, AttributeError):
+                pass
             try:  # this week's board (a relay from before weekly boards doesn't have one)
                 week = json.loads(await self._get(f"{LB_URL}week/{LB_FETCH}"))
                 rows = [dict(key=r["name"], name=display_name(r["name"]), score=int(r["score"]),
@@ -908,6 +950,28 @@ def make_hat(rows, color=None, px=PX):
             if ch != ".":
                 surf.fill(color or HAT_COLORS[ch], (c * px, r * px, px, px))
     return surf
+
+
+def eastern_now():
+    """The time in US Eastern (daylight saving from the second Sunday of March to the first of November)."""
+    utc = datetime.datetime.now(datetime.timezone.utc)
+
+    def sunday(month, nth):
+        d = datetime.datetime(utc.year, month, 1, tzinfo=datetime.timezone.utc)
+        return d + datetime.timedelta(days=(6 - d.weekday()) % 7 + 7 * (nth - 1))
+
+    summer = sunday(3, 2) + datetime.timedelta(hours=7) <= utc < sunday(11, 1) + datetime.timedelta(hours=6)
+    return (utc + datetime.timedelta(hours=-4 if summer else -5)).replace(tzinfo=None)
+
+
+def daily_day():
+    """Today's Daily Challenge, as YYYY-MM-DD."""
+    return eastern_now().date().isoformat()
+
+
+def daily_twist(day):
+    """The twist for a day: the same for everyone."""
+    return TWISTS[zlib.crc32(day.encode()) % len(TWISTS)]
 
 
 def copy_image(path):
@@ -1114,7 +1178,16 @@ class Game:
                            make_clawd(0, False, skin, px=3) for _, skin, _ in SKINS]
         self.skins, self.skin = {0}, 0  # unlocked color indexes, and the one Clawd wears
         self.gallery, self.gallery_icons = dict(tab="hats", pick=0), {}  # the gallery screen, and its little pictures
-        self.board_tab = "all"  # scores screen: all time or this week
+        self.board_tab = "all"  # scores screen: all time, this week or today (the Daily Challenge)
+        self.daily, self.last_daily = None, False  # the twist while playing a daily; the game that just ended was one
+        self.daily_info = dict(days=[], wins=[], top10=[], scores={})  # days played (Eastern dates), and how they went
+        try:
+            data = load_save(DAILY_FILE)
+            for k in ("days", "wins", "top10"):
+                self.daily_info[k] = [d for d in data.get(k, []) if isinstance(d, str)]
+            self.daily_info["scores"] = {d: int(v) for d, v in data.get("scores", {}).items()}
+        except (OSError, ValueError, AttributeError, TypeError):
+            pass
         # cross save: code (empty if not linked), this device's id, the last update number, the totals the save
         # had at the last sync (base), and an update sent but not yet answered (inflight), resent until it is
         self.sync = dict(code="", device=os.urandom(4).hex(), req=0, base={}, inflight=None)
@@ -1219,7 +1292,8 @@ class Game:
 
     @property
     def best(self):
-        return max([s["score"] for s in self.scores] + [self.score if self.mode != "title" else 0])
+        mine = self.score if self.mode != "title" and not (self.daily or self.last_daily) else 0  # dailies don't count
+        return max([s["score"] for s in self.scores] + [mine])
 
     def personal_best(self):
         """This player's own best score: kept since stats began, plus their own leaderboard entries from before."""
@@ -1234,6 +1308,10 @@ class Game:
         return self.score > 0 and (len(self.scores) < TOP_N or self.score > self.scores[-1]["score"])
 
     def game_over(self):
+        if self.daily:
+            self.daily_over()
+            return
+        self.last_daily = False
         self.hat_stats["best_score"] = max(self.hat_stats["best_score"], self.score)
         self.hat_stats["total_score"] += self.score
         self.save_progress()
@@ -1252,12 +1330,21 @@ class Game:
     def submit_name(self):
         name = self.name.strip() or "CLAWD"
         self.name = name
+        if self.last_daily:
+            self.last_key = self.board.submit_daily(name, self.score, self.skin)
+            pygame.key.stop_text_input()
+            self.mode = "over"
+            return
         self.last_key = self.board.submit(name, self.score, self.skin)
         pygame.key.stop_text_input()
         self.mode = "over"
 
     def reset(self, mode):
         self.mode = mode  # title | help | board | stats | home | play | paused | resume | entry | over
+        if mode != "play":
+            self.daily = None
+        # gameplay's dice: seeded with the date in a Daily Challenge, so everyone gets the same blocks
+        self.rng = random.Random(zlib.crc32(daily_day().encode()) if self.daily else None)
         self.t = 0.0
         self.score = 0
         self.lives = 3
@@ -1278,9 +1365,9 @@ class Game:
         self.charge = 0  # blocks the stored zap will destroy (0: none), used with E or the ZAP button
         self.magnets, self.magnet = [], 0.0  # pickups falling, seconds of pull left
         self.shields, self.shielded = [], False  # pickups falling; a shield saves the next lost life
-        self.shield_in = SHIELD_COOLDOWN + random.random() * SHIELD_RANDOM
+        self.shield_in = SHIELD_COOLDOWN + self.rng.random() * SHIELD_RANDOM
         self.shield_pop, self.shield_edge = None, []  # the outline bursting after a save; its points last frame
-        self.runners, self.gold_in = [], random.uniform(*GOLD_EVERY)  # gold blocks crossing the screen
+        self.runners, self.gold_in = [], self.rng.uniform(*GOLD_EVERY)  # gold blocks crossing the screen
         self.pickup_queue, self.pickup_wait = [], 0.0  # power-ups waiting their turn to drop
         self.trail, self.rings, self.dust = [], [], []
         self.flash = 0.0
@@ -1321,8 +1408,12 @@ class Game:
         self.play("click")
 
     def leave_to_menu(self):
-        """Quit this game for the main menu. Its stats and best score still count; it isn't posted as a high score."""
+        """Quit this game for the main menu. Its stats and best score still count; it isn't posted as a high score.
+        A Daily Challenge was the day's one try, so its score is posted as it stands."""
         self.leave_in = None
+        if self.daily:
+            self.daily_over()
+            return
         self.hat_stats["best_score"] = max(self.hat_stats["best_score"], self.score)
         self.hat_stats["total_score"] += self.score
         self.save_progress()
@@ -1473,6 +1564,8 @@ class Game:
         """Called on each left/right key press; a quick second tap in the same direction dashes."""
         if self.mode != "play":
             return
+        if self.daily == "MIRROR":
+            d = -d
         p = self.p
         last_dir, last_t = self.last_tap
         if d == last_dir and self.t - last_t <= DOUBLE_TAP and p["dash_cd"] <= 0:
@@ -1514,7 +1607,8 @@ class Game:
 
     def difficulty(self):
         d = min(1.0, self.t / 120)  # ramps over roughly 2 minutes
-        return 38 + d * 70 + random.random() * 14, 1.9 - d * 1.15
+        fall = (38 + d * 70 + self.rng.random() * 14) * (1.35 if self.daily == "FAST BLOCKS" else 1)
+        return fall, 1.9 - d * 1.15
 
     def hat_sprite(self, i, now):
         """Hat i as drawn at now (milliseconds): its animation frame."""
@@ -1583,6 +1677,8 @@ class Game:
 
     def count(self, stat, n=1):
         """Add to a hat challenge's counter (this game's, or the all-games one) and check for unlocks."""
+        if self.daily:
+            return  # Daily Challenge games don't count toward the normal hats and colors
         if stat in TOTAL_STATS:
             self.hat_stats[stat] += n
         else:
@@ -1591,6 +1687,8 @@ class Game:
 
     def check_hats(self):
         """Unlock any hat whose challenge has just been met, with a notification the first time."""
+        if self.daily:
+            return
         for i, (name, need, _) in enumerate(HATS):
             if i not in self.unlocked:
                 have, goal = self.hat_progress(need)
@@ -1633,6 +1731,8 @@ class Game:
 
     def unlock_color(self, key):
         """A color's challenge was just met: unlock it, with a notification the first time."""
+        if self.daily:
+            return
         i = next(k for k, (_, _, need) in enumerate(SKINS) if need == key)
         if i not in self.skins:
             self.skins.add(i)
@@ -1710,6 +1810,113 @@ class Game:
         if self.skin_viewing in self.skins:
             self.skin = self.skin_viewing
             self.save_colors()
+
+    # ---------- Daily Challenge ----------
+    def save_daily(self):
+        try:
+            write_save(DAILY_FILE, self.daily_info)
+        except OSError:
+            pass
+
+    def played_today(self):
+        return daily_day() in self.daily_info["days"]
+
+    def open_daily(self):
+        self.mode = "daily"
+        self.board.refresh()
+
+    def start_daily(self):
+        """The day's one try: it counts from the moment it starts, so quitting or closing the game uses it up."""
+        day = daily_day()
+        if day in self.daily_info["days"]:
+            return
+        self.daily_info["days"].append(day)
+        self.save_daily()
+        self.daily = daily_twist(day)[0]
+        self.reset("play")
+        self.lives = self.max_lives
+        self.pops.append(dict(x=W / 2, y=200, life=2.6, txt=self.daily, c=GOLD, size=22))
+        self.pops.append(dict(x=W / 2, y=232, life=2.6, txt=daily_twist(day)[1], c=INK, size=11))
+
+    def daily_over(self):
+        """The daily ended: its score goes on today's daily board (never the all-time or weekly ones)."""
+        self.daily_info["scores"][daily_day()] = self.score
+        self.save_daily()
+        self.daily, self.last_daily = None, True
+        self.play("gameover")
+        if self.sync["code"]:
+            self.sync_now()
+        if self.board.name:
+            self.last_key = self.board.submit_daily(self.board.name, self.score, self.skin)
+            self.mode = "over"
+        else:  # first time on any board: ask for a name
+            self.mode = "entry"
+            self.entry_ready = pygame.time.get_ticks() + 500
+            pygame.key.start_text_input()
+
+    def daily_key(self, key):
+        if key == pygame.K_ESCAPE:
+            self.mode = "title"
+        elif key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE) and not self.played_today():
+            self.start_daily()
+        elif key == pygame.K_h:
+            self.board_tab = "day"
+            self.show_board()
+
+    def draw_daily(self, blink_on):
+        c = self.canvas
+        c.fill(NIGHT, (0, 0, W, H))
+        day = daily_day()
+        name, what = daily_twist(day)
+        self.text("DAILY CHALLENGE", W / 2, 58, 20, GOLD)
+        self.text(datetime.date.fromisoformat(day).strftime("%A %B %d").upper(), W / 2, 84, 10, DIM)
+        self.text("TODAY'S TWIST", W / 2, 120, 10, DIM)
+        self.text(name, W / 2, 146, 20, CLAWD)
+        self.text(what, W / 2, 170, 10, INK)
+        streak, best = self.daily_streak()
+        self.text(f"STREAK {streak} DAY{'' if streak == 1 else 'S'}    BEST {best}", W / 2, 204, 10, GOLD if streak else DIM)
+        if not self.played_today():
+            box = pygame.Rect(30, 228, W - 60, 112)
+            pygame.draw.rect(c, BOMB_RED, box, 2)
+            self.text("ONE TRY ONLY", W / 2, 248, 14, BOMB_RED)
+            self.text("YOUR FIRST GAME TODAY IS YOUR SCORE.", W / 2, 274, 9, INK)
+            self.text("NO RESTARTS. QUITTING EARLY STILL COUNTS.", W / 2, 292, 9, INK)
+            self.text("DAILY GAMES DON'T COUNT FOR NORMAL HATS AND", W / 2, 314, 8, DIM)
+            self.text("COLORS. THEY EARN DAILY-ONLY ONES INSTEAD.", W / 2, 328, 8, DIM)
+            if TOUCH:
+                self.button("START MY ONE TRY", W / 2, 376, 220, 40, self.start_daily, 13, CLAWD)
+                self.button("BACK", W / 2, 426, 140, 32, self.go("title"), 12, DIM)
+            else:
+                if blink_on:
+                    self.text("ENTER  START MY ONE TRY", W / 2, 370, 13, INK)
+                self.text("ESC  BACK", W / 2, 396, 10, DIM)
+        else:
+            score = self.daily_info["scores"].get(day)
+            self.text("YOU'VE PLAYED TODAY" + (f": {score}" if score is not None else ""), W / 2, 244, 13, INK)
+            mine = [k + 1 for k, e in enumerate(self.board.snapshot("day"))
+                    if player_of(e["key"]) == self.board.player_id]
+            if mine:
+                self.text(f"RANK #{mine[0]} SO FAR", W / 2, 266, 11, GOLD)
+            now = eastern_now()
+            left = (datetime.datetime.combine(now.date() + datetime.timedelta(days=1), datetime.time()) - now).seconds
+            self.text(f"NEXT CHALLENGE IN {left // 3600}H {left % 3600 // 60:02d}M", W / 2, 292, 10, DIM)
+            if TOUCH:
+                self.button("TODAY'S SCORES", W / 2, 352, 220, 36, lambda: (setattr(self, "board_tab", "day"),
+                                                                           self.show_board()), 12, CLAWD)
+                self.button("BACK", W / 2, 400, 140, 32, self.go("title"), 12, DIM)
+            else:
+                self.text("H  TODAY'S SCORES    ESC  BACK", W / 2, 352, 10, DIM)
+
+    def daily_streak(self):
+        """(current, best): days in a row with a daily played. Current still counts if today's isn't played yet."""
+        days = sorted({datetime.date.fromisoformat(d) for d in self.daily_info["days"]})
+        best = run = 0
+        for i, d in enumerate(days):
+            run = run + 1 if i and (d - days[i - 1]).days == 1 else 1
+            best = max(best, run)
+        today = eastern_now().date()
+        current = run if days and (today - days[-1]).days <= 1 else 0
+        return current, best
 
     # ---------- cross save ----------
     def save_sync(self):
@@ -1893,6 +2100,8 @@ class Game:
         st = self.worn_set()
         if st:
             self.text(f"{st[0]} SET", x, 252, 9, GOLD, "left", surf=card)
+        if self.last_daily and self.mode in ("over", "entry"):
+            self.text(f"DAILY CHALLENGE {daily_day()}  {daily_twist(daily_day())[0]}", x, 272, 9, CLAWD, "left", surf=card)
         self.text(SITE, CARD_W / 2, CARD_H - 24, 11, INK, surf=card)
         return card
 
@@ -2123,6 +2332,10 @@ class Game:
         self.pickup_queue.append(kind)
 
     @property
+    def max_lives(self):
+        return 1 if self.daily == "ONE LIFE" else MAX_LIVES
+
+    @property
     def multiplier(self):
         return min(MAX_MULT, 1 + self.streak // COMBO_STEP)
 
@@ -2130,7 +2343,8 @@ class Game:
         """Drop a block or a bomb. Returns False if there was no clear spot this time."""
         fall, _ = self.difficulty()
         d = min(1.0, self.t / 120)
-        if self.t > BOMB_AFTER and random.random() < 0.1 + d * 0.08:
+        bomb_after = 0 if self.daily == "EARLY BOMBS" else BOMB_AFTER
+        if self.t > bomb_after and self.rng.random() < (0.1 + d * 0.08) * (2 if self.daily == "DOUBLE BOMBS" else 1):
             size = 20
             x = self.clear_x(size, fall * 0.9)
             if x is None:
@@ -2138,12 +2352,13 @@ class Game:
             self.blocks.append(dict(x=x, y=-size, s=size, vy=fall * 0.9,
                                     c=BOMB_RED, rot=0.0, spin=0.0, dead=False, bomb=True))
             return True
-        size = 16 + random.randrange(3) * 4
+        k = self.rng.randrange(3)
+        size = {"GIANT BLOCKS": 30 + k * 4, "TINY BLOCKS": 10 + k * 2}.get(self.daily, 16 + k * 4)
         x = self.clear_x(size, fall)
         if x is None:
             return False
         self.blocks.append(dict(x=x, y=-size, s=size, vy=fall,
-                                c=random.choice(BLOCK_COLORS), rot=0.0, spin=(random.random() - 0.5) * 70,
+                                c=self.rng.choice(BLOCK_COLORS), rot=0.0, spin=(self.rng.random() - 0.5) * 70,
                                 dead=False))
         return True
 
@@ -2151,7 +2366,7 @@ class Game:
         """A random x where something falling at vy won't run into anything already falling,
         or None if a few tries don't find one."""
         for _ in range(12):
-            x = 12 + random.random() * (W - 24 - size)
+            x = 12 + self.rng.random() * (W - 24 - size)
             for b in self.blocks:
                 if b["dead"] or not (b["x"] - FALL_GAP < x + size and x < b["x"] + b["s"] + FALL_GAP):
                     continue
@@ -2353,7 +2568,8 @@ class Game:
 
     def catch_bolt(self):
         """The first bolt charges a zap; each one after that, until it's used, makes it destroy one more block."""
-        self.zaps += 1
+        if not self.daily:
+            self.zaps += 1
         if self.zaps >= ZAP_GOAL:
             self.unlock_color("zaps")
         if self.charge >= ZAP_MAX:
@@ -2486,7 +2702,8 @@ class Game:
         if self.mode != "play":
             return
         self.t += dt
-        self.hat_stats["playtime"] += dt
+        if not self.daily:
+            self.hat_stats["playtime"] += dt
         p["air_t"] = 0.0 if p["on_ground"] else p["air_t"] + dt
         look = SKINS[self.skin][1]
         if look == "phoenix" and random.random() < 0.4:  # embers rising off him
@@ -2499,8 +2716,12 @@ class Game:
         self.check_hats()  # the timed ones: an hour in one game, minutes without losing a life
 
         left, right, jump = controls
+        if self.daily == "MIRROR":
+            left, right = right, left
 
         accel, top = (2600 if p["on_ground"] else 1800), 230
+        if self.daily == "SUPER SPEED":
+            accel, top = accel * 1.3, 330
         direction = right - left
         p["dash_cd"] -= dt
         for g in self.ghosts:
@@ -2568,7 +2789,7 @@ class Game:
         if not p["on_ground"] and not jump and p["vy"] < -200:
             p["vy"] = -200  # short hop on early release
 
-        p["vy"] += 1500 * dt
+        p["vy"] += (900 if self.daily == "LOW GRAVITY" else 1500) * dt
         p["x"] += p["vx"] * dt
         p["y"] += p["vy"] * dt
         if p["x"] < 0:
@@ -2583,7 +2804,7 @@ class Game:
         elif p["y"] > 90:
             p["at_sky"] = False
         if p["y"] >= GROUND - PH:
-            if not p["on_ground"]:
+            if not p["on_ground"] and not self.daily:
                 self.landings += 1
                 if self.landings >= LANDING_GOAL:
                     self.unlock_color("landings")
@@ -2595,10 +2816,10 @@ class Game:
         # (the high ones need wall jumps to reach)
         self.gold_in -= dt
         if self.gold_in <= 0:
-            self.gold_in = random.uniform(*GOLD_EVERY)
-            d = random.choice((-1, 1))
-            self.runners.append(dict(d=d, x=-20.0 if d > 0 else W + 2.0, y=random.uniform(*GOLD_HEIGHT),
-                                     v=random.uniform(*GOLD_SPEED), s=18, warn=GOLD_WARN, rot=0.0, emit=0.0))
+            self.gold_in = self.rng.uniform(*GOLD_EVERY)
+            d = self.rng.choice((-1, 1))
+            self.runners.append(dict(d=d, x=-20.0 if d > 0 else W + 2.0, y=self.rng.uniform(*GOLD_HEIGHT),
+                                     v=self.rng.uniform(*GOLD_SPEED), s=18, warn=GOLD_WARN, rot=0.0, emit=0.0))
             self.play("warn")
         for r in self.runners:
             if r["warn"] > 0:
@@ -2641,7 +2862,7 @@ class Game:
         self.spawn_in -= dt
         if self.spawn_in <= 0:
             # no clear spot: try again in a moment
-            self.spawn_in = self.difficulty()[1] * (0.75 + random.random() * 0.5) if self.spawn() else 0.1
+            self.spawn_in = self.difficulty()[1] * (0.75 + self.rng.random() * 0.5) if self.spawn() else 0.1
 
         pcx = p["x"] + PW / 2
         for b in self.blocks:
@@ -2689,7 +2910,7 @@ class Game:
                 self.burst(hx, h["y"], CLAWD, 20, 200)
                 self.play("heart")
                 self.count("hearts")
-                if self.lives < MAX_LIVES:
+                if self.lives < self.max_lives:
                     self.lives += 1
                     self.pops.append(dict(x=hx, y=h["y"] - 10, life=1.0, txt="+1 LIFE", c=CLAWD))
                 else:
@@ -2742,9 +2963,9 @@ class Game:
             self.pickup_wait = PICKUP_GAP
             kind = self.pickup_queue.pop(0)
             if kind == "shields":  # the cooldown counts from when it actually drops
-                self.shield_in = SHIELD_COOLDOWN + random.random() * SHIELD_RANDOM
+                self.shield_in = SHIELD_COOLDOWN + self.rng.random() * SHIELD_RANDOM
             if kind != "bolts" or self.charge < ZAP_MAX:  # the zap may have filled up while this one waited
-                getattr(self, kind).append(dict(x=40 + random.random() * (W - 80), y=-24.0, t=0.0, dead=False))
+                getattr(self, kind).append(dict(x=40 + self.rng.random() * (W - 80), y=-24.0, t=0.0, dead=False))
 
         # shield pickups: catching one saves Clawd's next lost life (they don't stack)
         for o in self.shields:
@@ -2859,19 +3080,24 @@ class Game:
                 if ch == "X":
                     self.canvas.fill(color, (x + k * size, y + r * size, size, size))
 
-    def draw_table(self, top, weekly=False):
-        self.text("THIS WEEK" if weekly else "HIGH SCORES", W / 2, top, 18, GOLD)
+    def draw_table(self, top, which="all"):
+        """A top 10: all time, this week, or today's Daily Challenge. Yesterday's daily winner wears a crown."""
+        weekly = which != "all"
+        self.text({"all": "HIGH SCORES", "week": "THIS WEEK", "day": "TODAY'S DAILY"}[which], W / 2, top, 18, GOLD)
         status = {"online": ("ONLINE  EVERYONE'S SCORES", (111, 183, 168)),
                   "offline": ("OFFLINE  SHOWING SAVED LIST", DIM),
                   "connecting": ("CONNECTING...", DIM)}[self.board.status]
         if weekly and self.board.status == "online":
-            status = ("RESETS MONDAY 12AM EASTERN", (111, 183, 168))
+            status = ("RESETS MONDAY 12AM EASTERN" if which == "week" else f"TWIST: {daily_twist(daily_day())[0]}",
+                      (111, 183, 168))
         self.text(status[0], W / 2, top + 20, 9, status[1])
         top += 14
-        scores = self.board.snapshot(weekly)[:10] if weekly else self.scores
+        scores = self.board.snapshot(which)[:10] if weekly else self.scores
         if not scores:
-            self.text("no scores this week yet" if weekly else "no scores yet", W / 2, top + 40, 12, DIM)
+            self.text({"all": "no scores yet", "week": "no scores this week yet", "day": "no one has played today yet"}[which],
+                      W / 2, top + 40, 12, DIM)
             return
+        champion = player_of(self.board.yesterday[0]) if self.board.yesterday else None
         for i, s in enumerate(scores):
             y = top + 32 + i * 22
             mine = self.mode == "over" and s.get("key") == self.last_key
@@ -2880,6 +3106,12 @@ class Game:
             name_col = TIER_COLOR[skin] if skin is not None and skin in TIER_COLOR else col  # by the color they wore
             self.text(f"{i + 1}.", 92, y, 13, col if mine else DIM, "right")
             self.text(s["name"], 104, y, 13, name_col, "left")
+            if champion and player_of(s["key"]) == champion:  # won yesterday's Daily Challenge
+                cx = 104 + self.font(13).size(s["name"])[0] + 6
+                for r, row in enumerate(("X.X.X", "XXXXX", "XXXXX")):
+                    for k, ch in enumerate(row):
+                        if ch == "X":
+                            self.canvas.fill(GOLD, (cx + k * 2, y - 4 + r * 2, 2, 2))
             self.text(str(s["score"]), W - 80, y, 13, col, "right")
             if mine:
                 self.text(">", 70, y, 13, CLAWD, "right")  # your new score
@@ -3250,9 +3482,9 @@ class Game:
             veil.fill((255, 250, 220, int(90 * self.flash / 0.18)))
             c.blit(veil, (0, 0))
 
-        for i in range(max(3, self.lives)):
+        for i in range(max(self.max_lives, self.lives)):
             self.pixel_heart(14 + i * 26, 16, 3, CLAWD if i < self.lives else EARTH)
-        x = 14 + max(3, self.lives) * 26
+        x = 14 + max(self.max_lives, self.lives) * 26
         if self.shielded and self.mode in ("play", "paused"):
             self.pixel_sprite(SHIELD_ICON, x, 15, 3, SHIELD_PIXELS)
             x += 26
@@ -3275,6 +3507,8 @@ class Game:
                 c.fill(MAGNET_COLOR, (14, bar_y, int(124 * self.magnet / MAGNET_TIME), 4))
         self.text(str(self.score), W - 16, 26, 22, INK, "right")
         self.text(f"BEST {self.best}", W - 16, 48, 10, DIM, "right")
+        if self.daily:
+            self.text(f"DAILY  {self.daily}", W - 16, 64, 8, GOLD, "right")
 
         if self.mode != "play":
             veil = pygame.Surface((W, H), pygame.SRCALPHA)
@@ -3287,7 +3521,10 @@ class Game:
                 self.text("CATCH", W / 2, 222 - up, 52, INK)
                 self.text("hit the blocks before they land", W / 2, 272 - up, 12, DIM)
                 if TOUCH:
-                    self.button("PLAY", W / 2, 282, 150, 44, self.start, 18, CLAWD)
+                    self.button("PLAY", W / 2 - 80, 282, 150, 44, self.start, 18, CLAWD)
+                    streak = self.daily_streak()[0]
+                    self.button("DAILY" + (f" {streak}" if streak else ""), W / 2 + 80, 282, 150, 44, self.open_daily, 16,
+                                GOLD if not self.played_today() else DIM)
                     for k, (label, action) in enumerate((("HELP", self.go("help")), ("SCORES", self.show_board),
                                                          ("STATS", self.go("stats")), ("GALLERY", self.open_gallery))):
                         self.button(label, W / 2 + (k - 1.5) * 92, 328, 86, 30, action, 9)
@@ -3295,7 +3532,11 @@ class Game:
                         self.button("ADD TO HOME SCREEN", W / 2, 366, 354, 30, self.go("home"), 10, GOLD)
                 else:
                     if blink_on:
-                        self.text("PRESS SPACE", W / 2, 330, 16, INK)
+                        self.text("PRESS SPACE", W / 2, 318, 16, INK)
+                    streak = self.daily_streak()[0]
+                    self.text("T  DAILY CHALLENGE" + (f"  STREAK {streak}" if streak else "") +
+                              ("" if not self.played_today() else "  (PLAYED)"), W / 2, 342, 10,
+                              GOLD if not self.played_today() else DIM)
                     self.text("I HELP   H SCORES   S STATS   G GALLERY   M SOUND", W / 2, 362, 10, DIM)
                 if self.update_ready:
                     if TOUCH:
@@ -3338,6 +3579,8 @@ class Game:
                     self.text("SPACE TO PLAY   ESC TO GO BACK", W / 2, 446, 11, DIM)
             elif self.mode == "gallery":
                 self.draw_gallery(now)
+            elif self.mode == "daily":
+                self.draw_daily(blink_on)
             elif self.mode in ("sync", "synccode"):
                 self.draw_sync(blink_on)
             elif self.mode == "stats":
@@ -3351,12 +3594,12 @@ class Game:
                     if blink_on:
                         self.text("SPACE TO PLAY   ESC TO GO BACK", W / 2, 476, 11, DIM)
             elif self.mode == "board":
-                for k, (tab, label) in enumerate((("all", "ALL TIME"), ("week", "THIS WEEK"))):
-                    self.button(label, W / 2 + (k * 2 - 1) * 76, 72, 140, 26, lambda tab=tab: self.board_tab_to(tab), 10,
+                for k, (tab, label) in enumerate((("all", "ALL TIME"), ("week", "THIS WEEK"), ("day", "TODAY"))):
+                    self.button(label, W / 2 + (k - 1) * 124, 72, 116, 26, lambda tab=tab: self.board_tab_to(tab), 10,
                                 INK if self.board_tab == tab else DIM)
-                self.draw_table(110, self.board_tab == "week")
+                self.draw_table(110, self.board_tab)
                 if not TOUCH:
-                    self.text("TAB  ALL TIME / THIS WEEK", W / 2, 420, 9, DIM)
+                    self.text("TAB  ALL TIME / THIS WEEK / TODAY", W / 2, 420, 9, DIM)
                 if TOUCH:
                     self.button("BACK", W / 2 - 76, 404, 140, 34, self.go("title"), 12, DIM)
                     self.button("PLAY", W / 2 + 76, 404, 140, 34, self.start, 12, CLAWD)
@@ -3403,14 +3646,17 @@ class Game:
             else:
                 self.text("GAME OVER", W / 2, 70, 34, CLAWD)
                 self.text(f"{self.score} POINT{'' if self.score == 1 else 'S'}", W / 2, 110, 18, INK)
-                self.draw_table(150)
+                if self.last_daily:
+                    streak = self.daily_streak()[0]
+                    self.text(f"DAILY DONE  STREAK {streak}  COME BACK TOMORROW", W / 2, 132, 9, GOLD)
+                self.draw_table(150, "day" if self.last_daily else "all")
                 if TOUCH:
                     self.button("MENU", W / 2 - 126, 432, 116, 34, lambda: self.reset("title"), 12, DIM)
                     self.button("SHARE", W / 2, 432, 116, 34, self.share_card, 12, GOLD)
-                    self.button("PLAY AGAIN", W / 2 + 126, 432, 116, 34, self.start, 12, CLAWD)
+                    self.button("PLAY" if self.last_daily else "PLAY AGAIN", W / 2 + 126, 432, 116, 34, self.start, 12, CLAWD)
                 else:
                     if blink_on:
-                        self.text("SPACE TO PLAY AGAIN", W / 2, 420, 13, DIM)
+                        self.text("SPACE TO PLAY A NORMAL GAME" if self.last_daily else "SPACE TO PLAY AGAIN", W / 2, 420, 13, DIM)
                     self.text("ESC  MAIN MENU    C  SHARE SCORE CARD", W / 2, 440, 10, DIM)
 
         if TOUCH and self.mode != "entry":
@@ -3504,6 +3750,12 @@ class Game:
                     if self.mode == "gallery":
                         self.gallery_key(e.key)
                         continue
+                    if self.mode == "daily":
+                        self.daily_key(e.key)
+                        continue
+                    if e.key == pygame.K_t and self.mode == "title":
+                        self.open_daily()
+                        continue
                     if self.mode == "sync":
                         self.sync_key(e.key)
                         continue
@@ -3511,7 +3763,7 @@ class Game:
                         self.open_sync()
                         continue
                     if e.key == pygame.K_TAB and self.mode == "board":
-                        self.board_tab = "week" if self.board_tab == "all" else "all"
+                        self.board_tab = {"all": "week", "week": "day", "day": "all"}[self.board_tab]
                         continue
                     if e.key == pygame.K_g and self.mode == "title":
                         self.open_gallery()
