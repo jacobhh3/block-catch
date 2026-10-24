@@ -304,7 +304,7 @@ HATS = [
     ("JESTER HAT", "jester", ["R...........B", "rR.........Bb", ".RR..YYY..BB.", "..RRRBBBBBB..", "..YYYYYYYYY.."]),
     ("WELDING MASK", "magnets_total", ["...zzzzzzz...", "..zZZZZZZZz..", "..ZZZZZZZZZ..", "..ZDDDDDDDZ..",
                                        "..ZDeDDDDDZ..", "..ZDDDDDDDZ..", "...ZZZZZZZ..."]),
-    ("USHANKA", "january", ["....nNNNn....", "...NNNNNNN...", "..NNNNNNNNN..", ".TTTTTRTTTTT.", ".TTTRRRRRTTT.",
+    ("USHANKA", "walljumps200", ["....nNNNn....", "...NNNNNNN...", "..NNNNNNNNN..", ".TTTTTRTTTTT.", ".TTTRRRRRTTT.",
                             ".TTTTRTRTTTT.", ".NN.......NN.", ".nN.......Nn."]),
     ("PIKMIN SPROUT", "sky_total", [".......EE....", "......EEje...", "......Ejee...", ".....EjEe....",
                                     ".....Eje.....", "......e......", "......e......", "......e......"]),
@@ -341,11 +341,11 @@ HAT_GOALS = {
     "dashes": (200, "total", "DASH 200 TIMES"),
     "jester": (1, "game", "LOSE YOUR LAST LIFE RIGHT AFTER A SHIELD"),
     "magnets_total": (100, "total", "CATCH 100 MAGNETS"),
-    "january": (1, "event", "PLAY IN JANUARY"),
+    "walljumps200": (200, "total", "WALL JUMP 200 TIMES"),  # counts the same wall jumps as the sombrero
     "sky_total": (50, "total", "TOUCH THE SKY 50 TIMES"),
 }
 # everything counted over all games (saved with the hats)
-TOTAL_STATS = [k for k, (_, scope, _) in HAT_GOALS.items() if scope == "total" and k != "days"] + [
+TOTAL_STATS = [k for k, (_, scope, _) in HAT_GOALS.items() if scope == "total" and k not in ("days", "walljumps200")] + [
     "golds_total", "block_bounces_total", "combo4", "dash_hits", "best_score", "total_score"]
 JESTER_WINDOW = 3.0  # seconds after a shield pops that losing your last life earns the jester hat
 
@@ -1183,6 +1183,8 @@ class Game:
         goal, scope, _ = HAT_GOALS[need]
         if need == "days":
             return len(self.hat_stats["days"]), goal
+        if need == "walljumps200":
+            return self.hat_stats["walljumps"], goal
         if scope == "total":
             return self.hat_stats[need], goal
         if need == "hour":
