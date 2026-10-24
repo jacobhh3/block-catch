@@ -302,13 +302,15 @@ HATS = [
     ("MUSHROOM CAP", "block_bounces", ["....RRRRR....", "..RRWRRRWRR..", ".RRRRRWRRRRR.", ".WWWWWWWWWWW."]),
     ("NINJA BAND", "dashes", ["RRRRRRRRRRRRR", "rrrrrrrrrrrRr", "...........rR"]),
     ("JESTER HAT", "jester", ["R...........B", "rR.........Bb", ".RR..YYY..BB.", "..RRRBBBBBB..", "..YYYYYYYYY.."]),
-    ("WELDING MASK", "magnets_total", ["...zzzzzzz...", "..zZZZZZZZz..", "..ZZDDDDDZZ..", "..ZZDeDDDZZ..",
-                                       ".sZZZZZZZZZs.", "..sssssssss.."]),
-    ("USHANKA", "january", ["....nNNNNn...", "..nNNTNNNNNn.", "..NNNNNNNTNN.", "TTTTTTRTTTTTn", "TTTTRRRRRTTTn",
-                            "TTTTTRTRTTTTn"]),
+    ("WELDING MASK", "magnets_total", ["...zzzzzzz...", "..zZZZZZZZz..", "..ZZZZZZZZZ..", "..ZDDDDDDDZ..",
+                                       "..ZDeDDDDDZ..", "..ZDDDDDDDZ..", "...ZZZZZZZ..."]),
+    ("USHANKA", "january", ["....nNNNn....", "...NNNNNNN...", "..NNNNNNNNN..", ".TTTTTRTTTTT.", ".TTTRRRRRTTT.",
+                            ".TTTTRTRTTTT.", ".NN.......NN.", ".nN.......Nn."]),
     ("PIKMIN SPROUT", "sky_total", [".......EE....", "......EEje...", "......Ejee...", ".....EjEe....",
                                     ".....Eje.....", "......e......", "......e......", "......e......"]),
 ]
+# hats that hang down over Clawd's head (rows below the top of his head), like a mask over his eyes
+HAT_DROP = {"WELDING MASK": 5, "USHANKA": 3}
 # A hat challenge: (goal, where it's counted, what the menu says). "total" counts over all games (saved),
 # "game" counts in one game, and "event" is a one-off that's either done or not.
 HAT_GOALS = {
@@ -2310,7 +2312,7 @@ class Game:
         hat = self.viewing if self.mode == "title" else self.worn
         if hat >= 0:
             art = self.hat_art[hat] if hat in self.unlocked else self.hat_shadow[hat]
-            clawd.append((art, art.get_rect(midbottom=(body.centerx, body.top))))
+            clawd.append((art, art.get_rect(midbottom=(body.centerx, body.top + HAT_DROP.get(HATS[hat][0], 0) * PX))))
         c.blits(clawd)
         if p["bomb_fx"] == "dizzy" and self.mode == "play":
             top = body.top - (10 if hat >= 0 else 0)
