@@ -377,7 +377,7 @@ HATS = [
     ("KING'S CROWN", "allhats", _KINGS),
     ("DRAGON HELM", "score10000", _DRAGON),
     ("UFO", "sky500", _ufo(0)),
-    ("FLAME CROWN", 500, _FLAME),
+    ("FLAME CROWN", "hotfoots1000", _FLAME),
     ("SAMURAI HELMET", "playtime10", _SAMURAI),
     ("SUNGLASSES", "score1000", ["..zwZZzwZZz..", "...ZZZ.ZZZ..."]),
     ("BOW", "games25", [".....LP...PL.", ".....LPPpPPL.", ".....LP...PL."]),
@@ -485,13 +485,14 @@ HAT_GOALS = {
     "bolts2000": (2000, "total", "CATCH 2000 BOLTS"),
     "magnets2000": (2000, "total", "CATCH 2000 MAGNETS"),
     "shields250": (250, "total", "GET SAVED BY 250 SHIELDS"),
+    "hotfoots1000": (1000, "total", "GET 1000 HOT FOOTS"),
 }
 HAT_GOALS["allhats"] = (len(HATS) - 1, "total", "UNLOCK EVERY OTHER HAT")
 # challenges that read another challenge's counter (a second, bigger goal for the same thing)
 HAT_STAT = {"walljumps200": "walljumps", "sky500": "sky_total", "playtime10": "playtime", "games25": "games",
             "hearts50": "hearts", "zapped5000": "zapped", "walljumps5000": "walljumps", "golds500": "golds_total",
             "blocks25000": "blocks", "hearts2000": "hearts", "magnets2000": "magnets_total",
-            "shields250": "shield_saves"}
+            "shields250": "shield_saves", "hotfoots1000": "hotfoots"}
 # everything counted over all games (saved with the hats)
 TOTAL_STATS = [k for k, (_, scope, _) in HAT_GOALS.items() if scope == "total" and k not in ("days", "days30", "allhats", "bolts2000") and k not in HAT_STAT] + [
     "golds_total", "block_bounces_total", "combo4", "dash_hits", "best_score", "total_score"]
