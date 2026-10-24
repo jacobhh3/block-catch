@@ -1074,10 +1074,14 @@ class Game:
                 self.on_home_screen = str(platform.window.bc_home) == "yes"
             except Exception:
                 pass
-        self.sound = 0  # index into SOUND_MODES
+        self.sound, self.fullscreen = 0, False  # index into SOUND_MODES; F11 full screen on PC
         try:
-            self.sound = int(load_save(SETTINGS_FILE).get("sound", 0)) % len(SOUND_MODES)
-        except (OSError, ValueError, AttributeError, TypeError):
+            settings = load_save(SETTINGS_FILE)
+            self.sound = int(settings.get("sound", 0)) % len(SOUND_MODES)
+            if settings.get("fullscreen") and not WEB:
+                pygame.display.toggle_fullscreen()
+                self.fullscreen = True
+        except (OSError, ValueError, AttributeError, TypeError, pygame.error):
             pass
         self.sfx, self.music_volume, self.notice = {}, None, None
         try:
@@ -1275,13 +1279,27 @@ class Game:
             except pygame.error:
                 pass
 
-    def toggle_sound(self):
-        self.sound = (self.sound + 1) % len(SOUND_MODES)
+    def save_settings(self):
         try:
-            write_save(SETTINGS_FILE, dict(sound=self.sound))
+            write_save(SETTINGS_FILE, dict(sound=self.sound, fullscreen=self.fullscreen))
         except OSError:
             pass
+
+    def toggle_sound(self):
+        self.sound = (self.sound + 1) % len(SOUND_MODES)
+        self.save_settings()
         self.notice = dict(txt="SOUND " + SOUND_MODES[self.sound], life=1.4)
+
+    def toggle_fullscreen(self):
+        """F11 on PC: the game scaled up to fill the screen (keeping its shape), or back to a window. Remembered."""
+        if WEB:
+            return
+        try:
+            pygame.display.toggle_fullscreen()
+        except pygame.error:
+            return
+        self.fullscreen = not self.fullscreen
+        self.save_settings()
 
     def sound_button(self, x, y):
         self.button("", x, y, 44, 32, self.toggle_sound, color=DIM)
@@ -2372,7 +2390,7 @@ class Game:
             ("CONTROLS", [("ARROWS", "move"), ("JUMP" if TOUCH else "UP", "jump"),
                           ("BLOCKS", "jump as you hit one"),
                           ("TAP TAP", "dash left or right"), ("WALL", "jump again off the edge"),
-                          ("ZAP" if TOUCH else "E", "use a stored bolt")]),
+                          ("ZAP" if TOUCH else "E", "use a stored bolt")] + ([] if TOUCH else [("F11", "full screen")])),
             ("SCORING", [("COMBO", "every 10 in a row adds x1"), ("AIR CHAIN", "hit more before landing"),
                          ("GOLD", "jump to catch it  +10")]),
             ("WATCH OUT", [("BOMBS", "never touch them"), ("3 MISSES", "and you are out")]),
@@ -2384,26 +2402,26 @@ class Game:
             for key, desc in rows:
                 self.text(key, 64, y, 10, {"BOMBS": BOMB_RED, "GOLD": GOLD}.get(key, INK), "left")
                 self.text(desc, 160, y, 10, DIM, "left")
-                y += 16
-            y += 6
+                y += 15
+            y += 4
         # pickups, drawn with their in-game sprites
         self.text("PICKUPS", 52, y, 11, CLAWD, "left")
         y += 20
         self.pixel_heart(64, y - 9, 3, CLAWD)
         self.text("extra life", 96, y, 10, DIM, "left")
-        y += 22
+        y += 20
         for r, row in enumerate(BOLT):
             for k, ch in enumerate(row):
                 if ch == "X":
                     c.fill(BOLT_COLOR, (66 + k * 3, y - 12 + r * 3, 3, 3))
-        self.text(f"charges a zap  more bolts: stronger (max {ZAP_MAX})", 96, y, 10, DIM, "left")
-        y += 22
+        self.text(f"zap  each bolt adds one (max {ZAP_MAX})", 96, y, 10, DIM, "left")
+        y += 20
         for r, row in enumerate(MAGNET):
             for k, ch in enumerate(row):
                 if ch != ".":
                     c.fill(MAGNET_TIP if ch == "T" else MAGNET_COLOR, (64 + k * 3, y - 10 + r * 3, 3, 3))
         self.text("pulls blocks to you", 96, y, 10, DIM, "left")
-        y += 22
+        y += 20
         self.pixel_sprite(SHIELD_ICON, 65, y - 10, 3, SHIELD_PIXELS)
         self.text("saves your next lost life", 96, y, 10, DIM, "left")
 
@@ -2919,6 +2937,9 @@ class Game:
                 if e.type == pygame.KEYDOWN:
                     if e.key == pygame.K_m:
                         self.toggle_sound()
+                        continue
+                    if e.key == pygame.K_F11:
+                        self.toggle_fullscreen()
                         continue
                     if e.key == pygame.K_h and self.mode in ("title", "over"):
                         self.last_key = None
