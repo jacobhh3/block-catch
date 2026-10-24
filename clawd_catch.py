@@ -241,6 +241,8 @@ HAT_COLORS = {
     "A": (118, 138, 84), "a": (76, 92, 56), "V": (110, 210, 245), "v": (50, 120, 180),
     # black and dark grey (light enough to see on the night sky), leaf greens
     "Z": (64, 60, 80), "z": (112, 106, 128), "E": (90, 200, 110), "e": (50, 130, 70),
+    # welding glass, pale leaf vein
+    "D": (34, 70, 48), "j": (170, 240, 160),
 }
 HATS = [
     ("PARTY HAT", 20, ["......w......",
@@ -300,6 +302,12 @@ HATS = [
     ("MUSHROOM CAP", "block_bounces", ["....RRRRR....", "..RRWRRRWRR..", ".RRRRRWRRRRR.", ".WWWWWWWWWWW."]),
     ("NINJA BAND", "dashes", ["RRRRRRRRRRRRR", "rrrrrrrrrrrRr", "...........rR"]),
     ("JESTER HAT", "jester", ["R...........B", "rR.........Bb", ".RR..YYY..BB.", "..RRRBBBBBB..", "..YYYYYYYYY.."]),
+    ("WELDING MASK", "magnets_total", ["...zzzzzzz...", "..zZZZZZZZz..", "..ZZDDDDDZZ..", "..ZZDeDDDZZ..",
+                                       ".sZZZZZZZZZs.", "..sssssssss.."]),
+    ("USHANKA", "january", ["....nNNNNn...", "..nNNTNNNNNn.", "..NNNNNNNTNN.", "TTTTTTRTTTTTn", "TTTTRRRRRTTTn",
+                            "TTTTTRTRTTTTn"]),
+    ("PIKMIN SPROUT", "sky_total", [".......EE....", "......EEje...", "......Ejee...", ".....EjEe....",
+                                    ".....Eje.....", "......e......", "......e......", "......e......"]),
 ]
 # A hat challenge: (goal, where it's counted, what the menu says). "total" counts over all games (saved),
 # "game" counts in one game, and "event" is a one-off that's either done or not.
@@ -330,10 +338,13 @@ HAT_GOALS = {
     "block_bounces": (50, "game", "BOUNCE OFF 50 BLOCKS IN ONE GAME"),
     "dashes": (200, "total", "DASH 200 TIMES"),
     "jester": (1, "game", "LOSE YOUR LAST LIFE RIGHT AFTER A SHIELD"),
+    "magnets_total": (100, "total", "CATCH 100 MAGNETS"),
+    "january": (1, "event", "PLAY IN JANUARY"),
+    "sky_total": (50, "total", "TOUCH THE SKY 50 TIMES"),
 }
 # everything counted over all games (saved with the hats)
 TOTAL_STATS = [k for k, (_, scope, _) in HAT_GOALS.items() if scope == "total" and k != "days"] + [
-    "golds_total", "sky_total", "block_bounces_total", "combo4", "dash_hits", "best_score", "magnets_total", "total_score"]
+    "golds_total", "block_bounces_total", "combo4", "dash_hits", "best_score", "total_score"]
 JESTER_WINDOW = 3.0  # seconds after a shield pops that losing your last life earns the jester hat
 
 HEART = [".XX.XX.", "XXXXXXX", "XXXXXXX", ".XXXXX.", "..XXX..", "...X..."]
