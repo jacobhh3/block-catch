@@ -17,7 +17,6 @@ WEB = sys.platform == "emscripten"  # running in a browser (built with pygbag)
 if WEB:
     import platform  # pygbag's bridge to the page's JavaScript
 TOUCH = WEB or os.environ.get("BLOCKCATCH_TOUCH") == "1"  # on-screen buttons; the env var tests them on PC
-FORCE_LANDSCAPE = os.environ.get("BLOCKCATCH_LANDSCAPE") == "1"  # tests the sideways phone layout on PC
 
 W, H, GROUND = 400, 560, 512
 PAD = 214 if TOUCH else 0  # height of the touch controls strip under the game
@@ -25,10 +24,6 @@ PAD = 214 if TOUCH else 0  # height of the touch controls strip under the game
 # the arrows run the full height.
 PAD_KEYS = [("left", 10, 16, 98, 182), ("right", 114, 16, 98, 182), ("zap", 218, 16, 172, 38),
             ("jump", 218, 60, 172, 138)]
-# phone held sideways: the game in the middle, a column of buttons each side. Both arrows on the left,
-# ZAP over JUMP on the right. The columns are as wide as the phone's shape allows.
-SIDE_MIN, SIDE_MAX = 170, 420  # column width limits
-SIDE_ZAP = 170  # height of ZAP; JUMP fills the rest under it
 KEY_ROWS = ["1234567890", "QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"]  # on-screen keyboard for the name entry
 NIGHT = (27, 26, 36)
 PANEL = (36, 34, 47)
@@ -1027,8 +1022,8 @@ class Game:
         icon = pygame.Surface((64, 64), pygame.SRCALPHA)
         icon.blit(make_clawd(0, False), ((64 - PW) // 2, (64 - PH) // 2))
         pygame.display.set_icon(icon)
-        self.landscape, self.view_x = False, 0  # sideways layout; where the game sits across the screen
-        self.set_layout(FORCE_LANDSCAPE and TOUCH)
+        # the browser page scales the canvas itself, so the web version skips SCALED
+        self.screen = pygame.display.set_mode((W, H + PAD), 0 if WEB else pygame.SCALED | pygame.RESIZABLE)
         self.canvas = pygame.Surface((W, H))
         self.clock = pygame.time.Clock()
         self.fonts = {}
@@ -1107,7 +1102,7 @@ class Game:
         self.last_key = None  # online key of the score just entered, for highlighting
         self.pointers = {}  # touch fingers (and the mouse) currently down: id -> (x, y)
         self.buttons = []  # tappable menu buttons drawn this frame: (rect, action)
-
+        self.pad = {name: pygame.Rect(x, H + y, w, h) for name, x, y, w, h in PAD_KEYS}
         self.build, self.update_ready, self.check_in = read_build(), False, 0.0
         self.stars = [((i * 97) % W, (i * 53) % 420, 2 if i % 3 == 0 else 1, i) for i in range(40)]
         self.reset("title")
@@ -1314,42 +1309,6 @@ class Game:
         self.pixel_sprite(SPEAKERS[self.sound], x - 15, y - 10, 3, DIM)
 
     # ---------- touch ----------
-    def set_layout(self, landscape):
-        """Portrait: the touch buttons in a strip under the game. Landscape: a column each side of it."""
-        self.landscape = landscape
-        if landscape:
-            shape = 19.5 / 9  # a typical phone on its side (what the PC test uses)
-            if WEB:  # as wide as this phone's shape allows
-                try:
-                    shape = float(platform.window.innerWidth) / float(platform.window.innerHeight)
-                except Exception:
-                    pass
-            side = int(max(SIDE_MIN, min(SIDE_MAX, (H * shape - W) / 2)))
-            # tap areas cover each side completely, so a thumb that drifts never misses (drawn a bit smaller)
-            half, right = side // 2, side + W
-            self.view_x = side
-            size = (W + 2 * side, H)
-            self.pad = {"left": pygame.Rect(0, 0, half, H), "right": pygame.Rect(half, 0, side - half, H),
-                        "zap": pygame.Rect(right, 0, side, SIDE_ZAP), "jump": pygame.Rect(right, SIDE_ZAP, side, H - SIDE_ZAP)}
-        else:
-            self.view_x = 0
-            size = (W, H + PAD)
-            self.pad = {name: pygame.Rect(x, H + y, w, h) for name, x, y, w, h in PAD_KEYS}
-        self.pointers = {}
-        # the browser page scales the canvas itself, so the web version skips SCALED
-        self.screen = pygame.display.set_mode(size, 0 if WEB else pygame.SCALED | pygame.RESIZABLE)
-
-    def check_orientation(self):
-        """Browser only: switch layouts when the phone is turned."""
-        if not WEB or not TOUCH:
-            return
-        try:
-            sideways = float(platform.window.innerWidth) > float(platform.window.innerHeight)
-        except Exception:
-            return
-        if sideways != self.landscape:
-            self.set_layout(sideways)
-
     def pad_at(self, pos):
         return next((name for name, r in self.pad.items() if pos and r.collidepoint(pos)), None)
 
@@ -2295,24 +2254,22 @@ class Game:
         surf = surf or self.canvas
         r = pygame.Rect(0, 0, w, h)
         r.center = (x, y)
-        hit = r.move(self.view_x, 0) if surf is self.canvas else r  # where it is on the screen
-        down = any(hit.collidepoint(pos) for pos in self.pointers.values())
+        down = any(r.collidepoint(pos) for pos in self.pointers.values())
         surf.fill(EARTH if down else NIGHT, r)
         pygame.draw.rect(surf, color, r, 2)
         self.text(label, x, y, size, color, surf=surf)
-        self.buttons.append((hit, action))
+        self.buttons.append((r, action))
 
     def rainbow_button(self, label, x, y, w, h, action, size, now):
         """A button whose border and letters shimmer through the rainbow."""
         r = pygame.Rect(0, 0, w, h)
         r.center = (x, y)
-        hit = r.move(self.view_x, 0)
-        down = any(hit.collidepoint(pos) for pos in self.pointers.values())
+        down = any(r.collidepoint(pos) for pos in self.pointers.values())
         self.canvas.fill(EARTH if down else NIGHT, r)
         shift = now / 1500
         pygame.draw.rect(self.canvas, rainbow(shift), r, 2)
         self.rainbow_text(label, x, y, size, shift)
-        self.buttons.append((hit, action))
+        self.buttons.append((r, action))
 
     def rainbow_text(self, label, x, y, size, shift):
         f = self.font(size)
@@ -2325,20 +2282,12 @@ class Game:
     def draw_pad(self):
         """The touch controls under the game, or a keyboard while typing a name."""
         s = self.screen
-        if self.landscape:
-            s.fill(NIGHT, (0, 0, self.view_x, H))
-            s.fill(NIGHT, (self.view_x + W, 0, self.view_x, H))
-            top = H - 186  # sideways there's no strip under the game: the keyboard covers its bottom
-        else:
-            s.fill(NIGHT, (0, H, W, PAD))
-            top = H
+        s.fill(NIGHT, (0, H, W, PAD))
         if self.mode == "entry":
-            if self.landscape:
-                s.fill(NIGHT, (self.view_x, top, W, H - top))
             pitch = 39
             for i, row in enumerate(KEY_ROWS):
-                x0 = self.view_x + (W - (10 if i == 3 else len(row)) * pitch) / 2 + 1.5
-                y = top + 28 + i * 40
+                x0 = (W - (10 if i == 3 else len(row)) * pitch) / 2 + 1.5
+                y = H + 28 + i * 40
                 for k, ch in enumerate(row):
                     self.button(ch, x0 + k * pitch + 18, y, 36, 36, lambda ch=ch: self.type_letter(ch), 14, surf=s)
             wide = pitch * 1.5 - 3
@@ -2348,8 +2297,6 @@ class Game:
             return
         held, live = self.held(), self.mode == "play"
         for name, r in self.pad.items():
-            if self.landscape:
-                r = r.inflate(-14, -14)  # the tap area is the whole cell; the button is drawn inside it
             on = live and name in held
             col = INK if on else (DIM if live else EARTH)
             if name == "zap" and live and self.charge and not on:
@@ -2360,12 +2307,6 @@ class Game:
             if name in ("left", "right"):
                 d = -1 if name == "left" else 1
                 pygame.draw.polygon(s, col, [(cx - d * 14, cy - 22), (cx + d * 16, cy), (cx - d * 14, cy + 22)])
-            elif name == "zap" and self.landscape:  # a big bolt over the label
-                for row_i, row in enumerate(BOLT):
-                    for k, ch in enumerate(row):
-                        if ch == "X":
-                            s.fill(col, (cx - 15 + k * 5, cy - 36 + row_i * 5, 5, 5))
-                self.text(f"ZAP x{self.charge}" if live and self.charge else "ZAP", cx, cy + 26, 14, col, surf=s)
             elif name == "zap":  # a little bolt beside the label
                 for row_i, row in enumerate(BOLT):
                     for k, ch in enumerate(row):
@@ -2950,7 +2891,7 @@ class Game:
             self.text(title, box.left + 66, box.top + 18, 11, GOLD, "left")
             self.text(name, box.left + 66, box.top + 38, 13, INK, "left")
 
-        self.screen.blit(c, (self.view_x, 0))
+        self.screen.blit(c, (0, 0))
         if TOUCH:
             self.draw_pad()
         pygame.display.flip()
@@ -2958,7 +2899,6 @@ class Game:
     async def run(self):
         while True:
             ms = self.clock.tick(60 if WEB else 120)
-            self.check_orientation()
             if ms > 400 and self.mode in ("play", "resume"):
                 self.pause()  # the game was frozen a while, e.g. the phone switched apps
             dt = min(0.033, ms / 1000)
