@@ -19,10 +19,10 @@ if WEB:
 TOUCH = WEB or os.environ.get("BLOCKCATCH_TOUCH") == "1"  # on-screen buttons; the env var tests them on PC
 
 W, H, GROUND = 400, 560, 512
-PAD = 170 if TOUCH else 0  # height of the touch controls strip under the game
+PAD = 214 if TOUCH else 0  # height of the touch controls strip under the game
 # touch buttons: left edge, top (down from the top of the strip), width, height. ZAP is a short bar above JUMP.
-PAD_KEYS = [("left", 10, 16, 98, 138), ("right", 114, 16, 98, 138), ("zap", 218, 16, 172, 38),
-            ("jump", 218, 60, 172, 94)]
+PAD_KEYS = [("left", 10, 60, 98, 138), ("right", 114, 60, 98, 138), ("zap", 218, 16, 172, 38),
+            ("jump", 218, 60, 172, 138)]
 KEY_ROWS = ["1234567890", "QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"]  # on-screen keyboard for the name entry
 NIGHT = (27, 26, 36)
 PANEL = (36, 34, 47)
