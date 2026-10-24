@@ -1325,14 +1325,12 @@ class Game:
                 except Exception:
                     pass
             side = int(max(SIDE_MIN, min(SIDE_MAX, (H * shape - W) / 2)))
-            m, w = 14, side - 28
-            half = (w - m) // 2
-            right = side + W + m
+            # tap areas cover each side completely, so a thumb that drifts never misses (drawn a bit smaller)
+            half, right = side // 2, side + W
             self.view_x = side
             size = (W + 2 * side, H)
-            self.pad = {"left": pygame.Rect(m, m, half, H - 2 * m), "right": pygame.Rect(2 * m + half, m, half, H - 2 * m),
-                        "zap": pygame.Rect(right, m, w, SIDE_ZAP),
-                        "jump": pygame.Rect(right, 2 * m + SIDE_ZAP, w, H - SIDE_ZAP - 3 * m)}
+            self.pad = {"left": pygame.Rect(0, 0, half, H), "right": pygame.Rect(half, 0, side - half, H),
+                        "zap": pygame.Rect(right, 0, side, SIDE_ZAP), "jump": pygame.Rect(right, SIDE_ZAP, side, H - SIDE_ZAP)}
         else:
             self.view_x = 0
             size = (W, H + PAD)
@@ -2350,6 +2348,8 @@ class Game:
             return
         held, live = self.held(), self.mode == "play"
         for name, r in self.pad.items():
+            if self.landscape:
+                r = r.inflate(-14, -14)  # the tap area is the whole cell; the button is drawn inside it
             on = live and name in held
             col = INK if on else (DIM if live else EARTH)
             if name == "zap" and live and self.charge and not on:
