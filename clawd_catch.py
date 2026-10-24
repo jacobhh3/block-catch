@@ -38,9 +38,8 @@ HEART_FALL = 45
 BOLT_EVERY = 15  # blocks hit (in total) that drop a lightning bolt
 MAX_CHARGES = 3  # bolts Clawd can store to zap with later; catching one more zaps right away
 BOLT_FALL = 55
-BOLT_KILLS = 2  # blocks the bolt destroys at the start, nearest the ground first
-BOLT_GROWTH = 30  # seconds of play per extra block the bolt destroys
-BOLT_MAX = 6
+BOLT_KILLS = 2  # blocks the first zap of a game destroys, nearest the ground first
+BOLT_MAX = 12  # each bolt caught after the first adds a block to every zap, up to this many
 BOLT_COLOR = (255, 226, 102)
 COMBO_STEP = 10  # hits in a row per extra score multiplier
 MAX_MULT = 4
@@ -1809,19 +1808,21 @@ class Game:
 
     @property
     def bolt_power(self):
-        """The bolt destroys more blocks the longer the match goes on."""
-        return min(BOLT_MAX, BOLT_KILLS + int(self.t / BOLT_GROWTH))
+        """Every bolt caught this game makes zaps hit one more block."""
+        return min(BOLT_MAX, BOLT_KILLS + max(0, self.game_counts.get("bolts_caught", 0) - 1))
 
     def catch_bolt(self):
         """A caught bolt is stored as a charge (or strikes right away when he can't hold any more)."""
         self.zaps += 1
         if self.zaps >= ZAP_GOAL:
             self.unlock_color("zaps")
+        self.game_counts["bolts_caught"] = self.game_counts.get("bolts_caught", 0) + 1
         if self.charges < MAX_CHARGES:
             self.charges += 1
             self.play("speed")
             p = self.p
-            self.pops.append(dict(x=p["x"] + PW / 2, y=p["y"] - 14, life=0.9, txt="+ZAP", c=BOLT_COLOR, size=12))
+            txt = "+ZAP" if self.bolt_power == BOLT_KILLS else f"+ZAP  x{self.bolt_power}"  # how strong zaps are now
+            self.pops.append(dict(x=p["x"] + PW / 2, y=p["y"] - 14, life=0.9, txt=txt, c=BOLT_COLOR, size=12))
         else:
             self.zap()
 
@@ -2402,7 +2403,7 @@ class Game:
             for k, ch in enumerate(row):
                 if ch == "X":
                     c.fill(BOLT_COLOR, (66 + k * 3, y - 12 + r * 3, 3, 3))
-        self.text(f"stores a zap (up to {MAX_CHARGES})  stronger over time", 96, y, 10, DIM, "left")
+        self.text(f"stores a zap (up to {MAX_CHARGES})  each one stronger", 96, y, 10, DIM, "left")
         y += 22
         for r, row in enumerate(MAGNET):
             for k, ch in enumerate(row):
