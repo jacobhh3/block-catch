@@ -197,22 +197,24 @@ COLOR_GOALS = {
 }
 COLOR_GOALS["everything"] = ("colors", len(SKINS) - 1, "UNLOCK EVERY OTHER COLOR")
 GAME_STATS = {"score", "streak", "chain", "time", "bombs_game", "month"}  # counted in one game, no progress shown
+TIER_NAMES = ["COMMON", "UNCOMMON", "RARE", "VERY RARE", "LEGENDARY"]  # for colors and hats
 # the color picker goes easiest to hardest (saves keep each color's place in SKINS); every animated
 # color is harder than every still one. Names on the menu are colored by their tier.
 COLOR_TIERS = [
     ((120, 210, 140), ["CLAWD", "PUMPKIN PETE", "FROSTY FRANK", "OBSESSED OSCAR", "RAGING RYAN", "AIRTIME RICKY",
-                       "MINTY MAYA", "COTTON CANDY CARL"]),  # easy
+                       "MINTY MAYA", "COTTON CANDY CARL"]),  # common
     ((127, 200, 255), ["TOXIC TONY", "GOLDEN GABE", "LAVA LUKE", "SMOKY SAM", "LIGHTNING LANGLEY", "EARTHQUAKE BEN",
-                       "CHERRY CHLOE", "BUBBLEGUM BELLA", "OCEAN OLIVIA", "SLIME STEVE", "NINJA NICK"]),  # medium
-    ((232, 176, 75), ["ZEBRA ZACK", "NEON NOAH", "CAMO CODY", "PEACHY PAIGE"]),  # hard
+                       "CHERRY CHLOE", "BUBBLEGUM BELLA", "OCEAN OLIVIA", "SLIME STEVE", "NINJA NICK"]),  # uncommon
+    ((232, 176, 75), ["ZEBRA ZACK", "NEON NOAH", "CAMO CODY", "PEACHY PAIGE"]),  # rare
     ((240, 110, 90), ["TROPICAL TRISTEN", "PLATINUM PARKER", "BLOCKBUSTER BRAD", "GHOST GARY", "STARLIGHT STELLA",
                       "ROBO ROB", "DIAMOND DANI", "GALAXY GRACE", "KABOOM KEVIN", "PHOENIX PHIL", "THUNDER THEO",
-                      "JACKPOT JACK", "HEARTFELT HOPE", "COSMIC COLE", "KRYSTAL KAI", "MAGNETIC MILO"]),  # very hard
+                      "JACKPOT JACK", "HEARTFELT HOPE", "COSMIC COLE", "KRYSTAL KAI", "MAGNETIC MILO"]),  # very rare
     ((200, 140, 255), ["GUARDIAN GRANT", "ANCIENT ARCHIE", "OBSIDIAN OWEN", "LEGENDARY LEO"]),  # legendary
 ]
 _SKIN_INDEX = {sk[0]: i for i, sk in enumerate(SKINS)}
 COLOR_ORDER = [_SKIN_INDEX[name] for _, names in COLOR_TIERS for name in names]
 TIER_COLOR = {_SKIN_INDEX[name]: col for col, names in COLOR_TIERS for name in names}
+COLOR_TIER_NAME = {_SKIN_INDEX[name]: TIER_NAMES[t] for t, (_, names) in enumerate(COLOR_TIERS) for name in names}
 assert sorted(COLOR_ORDER) == list(range(len(SKINS)))
 AIR_STREAK = 10  # blocks broken in a row without touching the ground (lightning doesn't count)
 PURPLE_GOAL = 50  # purple blocks broken in one game
@@ -244,8 +246,62 @@ HAT_COLORS = {
     # welding glass, pale leaf vein
     "D": (34, 70, 48), "j": (170, 240, 160),
     # see-through helmet glass and UFO beam, flame orange
-    "q": (170, 220, 255, 45), "x": (170, 255, 170, 70), "O": (240, 140, 50),
+    "q": (170, 220, 255, 45), "x": (170, 255, 170, 70), "X": (210, 255, 210, 40), "O": (240, 140, 50),
 }
+
+
+def _with(rows, *changes):
+    """A copy of a hat's rows with some swapped out: _with(rows, (row index, new row), ...)."""
+    rows = list(rows)
+    for i, row in changes:
+        rows[i] = row
+    return rows
+
+
+def _ufo(k):
+    """The UFO with its rim lights chased k steps round and its beam shimmering."""
+    lights = "SYSSRSSYSSRSS"
+    beam = ["....xxxxx....", "...xxxxxxx...", "..xxxxxxxxx.."]
+    return [".....VVV.....", "....VwVVV....", "..SSSSSSSSS..", lights[-k:] + lights[:-k] if k else lights,
+            ".sssssssssss."] + [b.replace("x", "X") if (i + k) % 2 else b for i, b in enumerate(beam)]
+
+
+def _rainbow(k):
+    """The rainbow with its colors shifted k bands along."""
+    bands = "ROYEBU"
+    arc = ["...0000000...", "..011111110..", ".01222222210.", ".012.....210.", "012.......210", "WWW.......WWW"]
+    return ["".join(bands[(int(ch) + k) % 6] if ch.isdigit() else ch for ch in row) for row in arc]
+
+
+_HALO_PATH = [(1, 0)] + [(0, c) for c in range(1, 12)] + [(1, 12)] + [(2, c) for c in range(11, 0, -1)]
+
+
+def _star_halo(k):
+    """Four stars circling above his head, k steps along."""
+    rows = [["."] * 13 for _ in range(3)]
+    for star in range(4):
+        r, c = _HALO_PATH[(k + star * 6) % len(_HALO_PATH)]
+        rows[r][c] = "Y" if r == 0 else "w"  # brighter on the near side
+    return ["".join(r) for r in rows] + ["............."]
+
+
+_PROPELLER = ["..BBBB.RRRR..", "......Y......", "....RYBRY....", "...BBRRRBB...", "..YYYYYYYYY.."]
+_SPACE = ["......R......", "......W......", "....WWWWW....", "..WWqqqqqWW..", ".WqqqqqqqqqW.", ".WqWqqqqqqqW.",
+          ".WqqqqqqqqqW.", ".WqqqqqqqqqW.", "..WWWWWWWWW.."]
+_ARMY = ["....AAAAA....", "...AaAAAAAA..", "..AAzjzjzAA..", "..AazzzzzaA..", ".aaaaaaaaaaa."]
+_KINGS = ["......w......", ".....wYw.....", "..Y...Y...Y..", "..YYRRYRRYY..", "..YRRRRRRRY..", "..YCYRYUYCY..",
+          "..yyyyyyyyy..", ".WZWWWZWWWZW."]
+_DRAGON = ["H...........H", "hH.........Hh", ".hH.eEEEe.Hh.", "..heeEeEeeh..", "..eEeeeeeEe..", "..eeeEeEeee..",
+           "..ee.eee.ee..", "..ee.eee.ee..", "...W.W.W.W..."]
+_FLAME = ["..R...R...R..", ".RO..ROR..OR.", ".ROY.RYO.YOR.", "..YYYYYYYYY..", "..yyyyyyyyy.."]
+_SAMURAI = ["Y...........Y", ".Y.........Y.", "..Y...w...Y..", "...YrrYrrY...", "..rRRRRRRRr..", ".rRRRRRRRRRr.",
+            "rrY.......Yrr"]
+_CLOUD = ["....sSSs.....", "..sSSSSSSSs..", ".sSSSSSSSSSs.", ".zzzzzzzzzzz."]
+_RAIN = [["..l...l...l..", "....l...l...."], ["....l...l....", "..l...l...l.."]]
+_VALKYRIE = ["W...........W", "WW.........WW", ".WW.SSSSS.WW.", "..WSSSSSSSW..", "..SsSsSsSsS..", "..sssssssss.."]
+_PHARAOH = [".....YYY.....", "...YYYwYYY...", "..BBBBBBBBB..", ".YYYYYYYYYYY.", ".BB.......BB.", ".YY.......YY.",
+            ".BB.......BB.", ".YY.......YY."]
+
 HATS = [
     ("PARTY HAT", 20, ["......w......",
                        ".....LPp.....",
@@ -276,9 +332,8 @@ HATS = [
                     "..yyyyyyyyy.."]),
     ("VIKING HELMET", "bomb_bounces", ["H...........H", "hH..SSSSS..Hh", ".hHSSSSSSSHh.", "..SsSsSsSsS..",
                                        "..sssssssss..", "......s......"]),
-    ("ARMY HELMET", "hour", ["....AAAAA....", "...AaAAAAAA..", "..AAAAAaAAA..", "..AaAAAAAaA..", ".aaaaaaaaaaa."]),
-    ("SPACE HELMET", "airtime", ["......R......", "......W......", "....WWWWW....", "..WWqqqqqWW..", ".WqqqqqqqqqW.",
-                                 ".WqWqqqqqqqW.", ".WqqqqqqqqqW.", ".WqqqqqqqqqW.", "..WWWWWWWWW.."]),
+    ("ARMY HELMET", "hour", _ARMY),
+    ("SPACE HELMET", "airtime", _SPACE),
     ("PIRATE HAT", "golds", ["...ZZZZZZZ...", "..ZZZWZWZZZ..", "..ZZZZWZZZZ..", "ZZZZZZZZZZZZZ", ".zzzzzzzzzzz.",
                              ".......ZZZ...", ".......ZZZ...", "........Z...."]),
     ("CHEF HAT", "score500", ["...WW.WW.WW..", "..WWWWWWWWW..", "..WWWWWWWWW..", "...WWWWWWW...", "...zzzzzzz..."]),
@@ -295,7 +350,7 @@ HATS = [
     ("DEVIL HORNS", "bombs", ["..R.......R..", "..Rr.....rR..", "...rr...rr..."]),
     ("BUNNY EARS", "jumps", ["...W.....W...", "..WPW...WPW..", "..WPW...WPW..", "..WPW...WPW..", "...WW...WW..."]),
     ("CAT EARS", "flips", ["..N.......N..", "..NP.....PN..", "..NNN...NNN.."]),
-    ("PROPELLER CAP", "air100", ["..BBBB.RRRR..", "......Y......", "....RYBRY....", "...BBRRRBB...", "..YYYYYYYYY.."]),
+    ("PROPELLER CAP", "air100", _PROPELLER),
     ("GRAD CAP", "score2000", [".ZZZZZZZZZZZ.", "ZZZZZZYZZZZZZ", "...zzzzzzzY..", "...zzzzzzzY.."]),
     ("HEADPHONES", "playtime", ["...zzzzzzz...", "..z.......z..", ".z.........z.", ".RR.......RR.", ".RR.......RR."]),
     ("FLOWER CROWN", "hearts", [".LP.wY.LP.wY.", ".PL.Yw.PL.Yw.", "eEeEeEeEeEeEe"]),
@@ -312,20 +367,53 @@ HATS = [
                             ".TTTTRTRTTTT.", ".NN.......NN.", ".nN.......Nn."]),
     ("PIKMIN SPROUT", "sky_total", [".......EE....", "......EEje...", "......Ejee...", ".....EjEe....",
                                     ".....Eje.....", "......e......", "......e......", "......e......"]),
-    ("KING'S CROWN", "allhats", ["......w......", ".....wYw.....", "..Y...Y...Y..", "..YYRRYRRYY..", "..YRRRRRRRY..",
-                                 "..YCYRYUYCY..", "..yyyyyyyyy..", ".WZWWWZWWWZW."]),
-    ("DRAGON HELM", "score10000", ["H...........H", "hH.........Hh", ".hH.eEEEe.Hh.", "..heeEeEeeh..", "..eEeeeeeEe..",
-                                   "..eeeEeEeee..", "..ee.eee.ee..", "..ee.eee.ee..", "...W.W.W.W..."]),
-    ("UFO", "sky500", [".....VVV.....", "....VwVVV....", "..SSSSSSSSS..", "SYSSRSSYSSRSS", ".sssssssssss.",
-                       "...xxxxxxx...", "...xxxxxxx..."]),
-    ("FLAME CROWN", 300, ["..R...R...R..", ".RO..ROR..OR.", ".ROY.RYO.YOR.", "..YYYYYYYYY..", "..yyyyyyyyy.."]),
-    ("SAMURAI HELMET", "playtime10", ["Y...........Y", ".Y.........Y.", "..Y...w...Y..", "...YrrYrrY...",
-                                      "..rRRRRRRRr..", ".rRRRRRRRRRr.", "rrY.......Yrr"]),
+    ("KING'S CROWN", "allhats", _KINGS),
+    ("DRAGON HELM", "score10000", _DRAGON),
+    ("UFO", "sky500", _ufo(0)),
+    ("FLAME CROWN", 300, _FLAME),
+    ("SAMURAI HELMET", "playtime10", _SAMURAI),
+    ("SUNGLASSES", "score1000", ["..zwZZzwZZz..", "...ZZZ.ZZZ..."]),
+    ("BOW", "games25", [".....LP...PL.", ".....LPPpPPL.", ".....LP...PL."]),
+    ("FEZ", "hearts50", ["....RRRRZ....", "....RRRRRZ...", "...RRRRRRRZ..", "...rrrrrrrZ.."]),
+    ("STORM CLOUD", "zapped5000", _CLOUD + _RAIN[0]),
+    ("VALKYRIE HELM", "walljumps5000", _VALKYRIE),
+    ("STAR HALO", "days30", _star_halo(0)),
+    ("RAINBOW", "golds500", _rainbow(0)),
+    ("PHARAOH", "blocks25000", _PHARAOH),
 ]
+# animated hats: (frames per second, frames). The propeller only spins while he's in the air.
+HAT_ANIM = {
+    "PROPELLER CAP": (16, [_PROPELLER, _with(_PROPELLER, (0, ".....BRR.....")),
+                           _with(_PROPELLER, (0, "..RRRR.BBBB..")), _with(_PROPELLER, (0, ".....RBB....."))]),
+    "UFO": (8, [_ufo(k) for k in range(6)]),
+    "FLAME CROWN": (8, [_FLAME, _with(_FLAME, (0, ".R....R....R."), (1, "..RO.RORO.RO."), (2, ".ORY.OYR.YRO.")),
+                        _with(_FLAME, (0, "...R..R..R..."), (1, ".ROR.ROR.ROR."), (2, ".OYO.OYO.OYO."))]),
+    "SPACE HELMET": (2, [_SPACE, _with(_SPACE, (0, "......r......"))]),  # blinking antenna
+    "ARMY HELMET": (3, [_with(_ARMY, (2, f"..AAz{c}z{c}zAA..")) for c in "jEeE"]),  # night vision glowing
+    "KING'S CROWN": (3, [_KINGS, _with(_KINGS, (5, "..YwYRYUYCY..")), _KINGS, _with(_KINGS, (5, "..YCYRYwYCY.."))]),
+    "DRAGON HELM": (3, [_DRAGON] + [_with(_DRAGON, (6, f"..ee{c}eee{c}ee.."), (7, f"..ee{c}eee{c}ee.."))
+                                    for c in "rRr"]),  # eyes glowing red
+    "SAMURAI HELMET": (2, [_SAMURAI, _with(_SAMURAI, (0, "w...........w"), (2, "..Y...Y...Y.."))]),
+    "STORM CLOUD": (6, [_CLOUD + _RAIN[k % 2] for k in range(6)] + [_CLOUD + ["......YY.....", ".....YY......"],
+                                                                    _CLOUD + _RAIN[1]]),
+    "VALKYRIE HELM": (6, [_VALKYRIE,
+                          [".............", "W...........W", "WW..SSSSS..WW", ".WWSSSSSSSWW.", "..SsSsSsSsS..",
+                           "..sssssssss.."],
+                          [".............", ".............", "....SSSSS....", ".WWSSSSSSSWW.", "WWSsSsSsSsSWW",
+                           "W.sssssssss.W"],
+                          [".............", "W...........W", "WW..SSSSS..WW", ".WWSSSSSSSWW.", "..SsSsSsSsS..",
+                           "..sssssssss.."]]),  # wings flapping
+    "STAR HALO": (10, [_star_halo(k) for k in range(6)]),
+    "RAINBOW": (6, [_rainbow(k) for k in range(6)]),
+    "PHARAOH": (3, [_PHARAOH, [row.translate(str.maketrans("YB", "BY")) for row in _PHARAOH]]),
+}
+HAT_AIR_ONLY = {"PROPELLER CAP"}
+HAT_BOB = {"UFO": 5, "STORM CLOUD": 3, "STAR HALO": 2}  # floating hats drift up and down this many pixels
 # hats that hang down over Clawd's head (rows below the top of his head), like a mask over his eyes
 HAT_DROP = {"WELDING MASK": 5, "USHANKA": 3, "SPACE HELMET": 5, "KNIGHT HELMET": 5, "PIRATE HAT": 4,
             "HEADPHONES": 3, "NINJA BAND": 3, "VIKING HELMET": 2, "KING'S CROWN": 1, "DRAGON HELM": 5,
-            "SAMURAI HELMET": 2}
+            "SAMURAI HELMET": 2, "SUNGLASSES": 4, "BOW": 1, "FEZ": 1,
+            "VALKYRIE HELM": 1, "PHARAOH": 4}
 # brimmed hats sit one row down, resting on his head
 HAT_DROP.update({n: 1 for n in ["BALL CAP", "COWBOY HAT", "TOP HAT", "ARMY HELMET", "CHEF HAT", "BEANIE", "HARD HAT",
                                 "FIREFIGHTER", "SOMBRERO", "FLOWER CROWN", "GRAD CAP", "SANTA HAT", "WITCH HAT",
@@ -366,28 +454,40 @@ HAT_GOALS = {
     "score10000": (10000, "game", "SCORE 10000 IN ONE GAME"),
     "sky500": (500, "total", "TOUCH THE SKY 500 TIMES"),
     "playtime10": (10 * 3600, "total", "PLAY FOR 10 HOURS"),
+    "score1000": (1000, "game", "SCORE 1000 IN ONE GAME"),
+    "games25": (25, "total", "PLAY 25 GAMES"),
+    "hearts50": (50, "total", "CATCH 50 HEARTS"),
+    "zapped5000": (5000, "total", "ZAP 5000 BLOCKS"),
+    "walljumps5000": (5000, "total", "WALL JUMP 5000 TIMES"),
+    "days30": (30, "total", "PLAY ON 30 DIFFERENT DAYS"),
+    "golds500": (500, "total", "CATCH 500 GOLD BLOCKS"),
+    "blocks25000": (25000, "total", "BREAK 25000 BLOCKS"),
 }
 HAT_GOALS["allhats"] = (len(HATS) - 1, "total", "UNLOCK EVERY OTHER HAT")
 # challenges that read another challenge's counter (a second, bigger goal for the same thing)
-HAT_STAT = {"walljumps200": "walljumps", "sky500": "sky_total", "playtime10": "playtime"}
+HAT_STAT = {"walljumps200": "walljumps", "sky500": "sky_total", "playtime10": "playtime", "games25": "games",
+            "hearts50": "hearts", "zapped5000": "zapped", "walljumps5000": "walljumps", "golds500": "golds_total",
+            "blocks25000": "blocks"}
 # everything counted over all games (saved with the hats)
-TOTAL_STATS = [k for k, (_, scope, _) in HAT_GOALS.items() if scope == "total" and k not in ("days", "allhats") and k not in HAT_STAT] + [
+TOTAL_STATS = [k for k, (_, scope, _) in HAT_GOALS.items() if scope == "total" and k not in ("days", "days30", "allhats") and k not in HAT_STAT] + [
     "golds_total", "block_bounces_total", "combo4", "dash_hits", "best_score", "total_score"]
-# hat tiers, like the colors': the picker goes easiest to hardest and names are colored by tier
+# hat tiers (TIER_NAMES), like the colors': the picker goes easiest to hardest and names are colored by tier
 HAT_TIERS = [
     ((120, 210, 140), ["PARTY HAT", "BALL CAP", "COWBOY HAT", "TOP HAT"]),  # the original streak hats
-    ((127, 200, 255), ["CROWN"]),
-    ((232, 176, 75), ["BEANIE", "CHEF HAT", "WIZARD HAT", "KNIGHT HELMET", "NINJA BAND", "VIKING HELMET", "DEVIL HORNS",
-                      "BUNNY EARS", "PIKMIN SPROUT", "USHANKA", "HEADPHONES", "CAPTAIN HAT", "SANTA HAT", "WITCH HAT",
-                      "FIREFIGHTER"]),
+    ((127, 200, 255), ["CROWN", "BEANIE", "CHEF HAT", "WIZARD HAT", "KNIGHT HELMET", "NINJA BAND", "SUNGLASSES", "BOW",
+                       "FEZ"]),
+    ((232, 176, 75), ["VIKING HELMET", "DEVIL HORNS", "BUNNY EARS", "PIKMIN SPROUT", "USHANKA", "HEADPHONES",
+                      "CAPTAIN HAT", "SANTA HAT", "WITCH HAT", "FIREFIGHTER"]),
     ((240, 110, 90), ["PIRATE HAT", "HARD HAT", "FLOWER CROWN", "ROBOT ANTENNA", "MUSHROOM CAP", "WELDING MASK",
                       "CAT EARS", "GRAD CAP", "SOMBRERO", "PROPELLER CAP", "HALO", "JESTER HAT"]),
     ((200, 140, 255), ["ARMY HELMET", "SPACE HELMET", "KING'S CROWN", "DRAGON HELM", "UFO", "FLAME CROWN",
-                       "SAMURAI HELMET"]),
+                       "SAMURAI HELMET", "STORM CLOUD", "VALKYRIE HELM", "STAR HALO", "RAINBOW", "PHARAOH"]),
 ]
 _HAT_INDEX = {h[0]: i for i, h in enumerate(HATS)}
 HAT_ORDER = [_HAT_INDEX[name] for _, names in HAT_TIERS for name in names]
 HAT_TIER_COLOR = {_HAT_INDEX[name]: col for col, names in HAT_TIERS for name in names}
+HAT_TIER_NAME = {_HAT_INDEX[name]: TIER_NAMES[t] for t, (_, names) in enumerate(HAT_TIERS) for name in names}
+LEGENDARY_HATS = {_HAT_INDEX[name] for name in HAT_TIERS[-1][1]}  # these get a glint sliding across them
 assert sorted(HAT_ORDER) == list(range(len(HATS)))
 JESTER_WINDOW = 3.0  # seconds after a shield pops that losing your last life earns the jester hat
 
@@ -716,6 +816,23 @@ def make_hat(rows, color=None, px=PX):
     return surf
 
 
+def add_glint(art, k):
+    """A white glint sliding diagonally across a hat as k goes from 0 to 1."""
+    w, h = art.get_width() // PX, art.get_height() // PX
+    band = pygame.Surface(art.get_size(), pygame.SRCALPHA)
+    d = k * (w + h + 2) - 2
+    for r in range(h):
+        for c in range(w):
+            if 0 <= c + r - d < 2:
+                band.fill((255, 255, 255, 170), (c * PX, r * PX, PX, PX))
+    shine = art.copy()
+    shine.fill((255, 255, 255), special_flags=pygame.BLEND_RGB_MAX)  # white, only where the hat is
+    shine.blit(band, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+    out = art.copy()
+    out.blit(shine, (0, 0))
+    return out
+
+
 def make_clawd(frame, blink, skin=CLAWD, px=PX):
     surf = pygame.Surface((13 * px, 9 * px), pygame.SRCALPHA)
     rows = BODY + LEGS[frame]
@@ -891,10 +1008,13 @@ class Game:
             pass
         self.skin_viewing = self.skin  # color shown in the title screen picker
         self.board = Leaderboard()
-        self.hat_art = [make_hat(rows) for _, _, rows in HATS]
-        self.hat_shadow = [a.copy() for a in self.hat_art]  # locked hats: full color, dimmed
-        for a in self.hat_shadow:
-            a.fill((150, 145, 160, 255), special_flags=pygame.BLEND_RGBA_MULT)
+        # every frame of every hat (most have just one)
+        self.hat_art = [[make_hat(f) for f in HAT_ANIM[name][1]] if name in HAT_ANIM else [make_hat(rows)]
+                        for name, _, rows in HATS]
+        self.hat_shadow = [[a.copy() for a in frames] for frames in self.hat_art]  # locked hats: full color, dimmed
+        for frames in self.hat_shadow:
+            for a in frames:
+                a.fill((150, 145, 160, 255), special_flags=pygame.BLEND_RGBA_MULT)
         self.hat_icons = [make_hat(rows, px=3) for _, _, rows in HATS]
         self.unlocked, self.worn = set(), -1  # hat indexes; -1 is no hat
         # progress toward the hats that count over all games (play time in seconds; days as dates)
@@ -1212,6 +1332,18 @@ class Game:
         d = min(1.0, self.t / 120)  # ramps over roughly 2 minutes
         return 38 + d * 70 + random.random() * 14, 1.9 - d * 1.15
 
+    def hat_sprite(self, i, now):
+        """Hat i as drawn right now: its animation frame, with a glint now and then on legendary ones."""
+        name = HATS[i][0]
+        frames = self.hat_art[i] if i in self.unlocked else self.hat_shadow[i]
+        k = 0
+        if name in HAT_ANIM and (name not in HAT_AIR_ONLY or not self.p["on_ground"]):
+            k = int(now * HAT_ANIM[name][0]) % len(frames)
+        glint = (now % 2.5) / 0.6  # takes 0.6 seconds, every 2.5
+        if i in self.unlocked and i in LEGENDARY_HATS and glint < 1:
+            return add_glint(frames[k], glint)
+        return frames[k]
+
     def save_hats(self):
         try:
             write_save(HATS_FILE, dict(unlocked=sorted(self.unlocked), worn=self.worn, stats=self.hat_stats))
@@ -1223,7 +1355,7 @@ class Game:
         if isinstance(need, int):
             return self.streak, need
         goal, scope, _ = HAT_GOALS[need]
-        if need == "days":
+        if need in ("days", "days30"):
             return len(self.hat_stats["days"]), goal
         if need in HAT_STAT:
             return self.hat_stats[HAT_STAT[need]], goal
@@ -1239,7 +1371,7 @@ class Game:
             return self.t - self.game_counts["last_loss"], goal
         if need == "air100":
             return self.p["chain"], goal
-        if need in ("score500", "score2000", "score10000"):
+        if need.startswith("score"):
             return self.score, goal
         if scope == "event":
             return (goal if self.mode in ("play", "paused", "resume") and datetime.date.today().month == goal else 0), goal
@@ -1267,8 +1399,10 @@ class Game:
 
     def hat_status(self, i):
         """The line under a hat's name on the menu: what unlocks it (and progress so far) while it's locked."""
-        if i == -1 or i in self.unlocked:
+        if i == -1:
             return f"HATS {len(self.unlocked)}/{len(HATS)}"
+        if i in self.unlocked:
+            return f"{HAT_TIER_NAME[i]}  HATS {len(self.unlocked)}/{len(HATS)}"
         need = HATS[i][1]
         if isinstance(need, int):
             return f"LOCKED  {need} IN A ROW"
@@ -1279,7 +1413,7 @@ class Game:
         if need == "playtime":
             return f"LOCKED  {label}  {int(have // 60)}/{goal // 60} MIN"
         if need == "playtime10":
-            return f"LOCKED  {label}  {have / 3600:.1f}/{goal // 3600}"
+            return f"LOCKED  {label}  {have / 3600:.1f}/{goal // 3600} HRS"
         return f"LOCKED  {label}  {int(min(have, goal))}/{goal}"
 
     def save_progress(self):
@@ -1347,7 +1481,7 @@ class Game:
     def color_status(self, i):
         """The second line under a color's name on the menu: progress if it's locked."""
         if i in self.skins:
-            return f"COLORS {len(self.skins)}/{len(SKINS)}"
+            return f"{COLOR_TIER_NAME[i]}  COLORS {len(self.skins)}/{len(SKINS)}"
         key = SKINS[i][2]
         if key in COLOR_GOALS:
             stat, goal, label = COLOR_GOALS[key]
@@ -2361,8 +2495,9 @@ class Game:
         clawd = [(sprite, body)]
         hat = self.viewing if self.mode == "title" else self.worn
         if hat >= 0:
-            art = self.hat_art[hat] if hat in self.unlocked else self.hat_shadow[hat]
-            clawd.append((art, art.get_rect(midbottom=(body.centerx, body.top + HAT_DROP.get(HATS[hat][0], 0) * PX))))
+            art, name = self.hat_sprite(hat, now), HATS[hat][0]
+            bob = round(HAT_BOB.get(name, 0) * (1 + math.sin(now * 2.5)) / 2)
+            clawd.append((art, art.get_rect(midbottom=(body.centerx, body.top + HAT_DROP.get(name, 0) * PX - bob))))
         c.blits(clawd)
         if p["bomb_fx"] == "dizzy" and self.mode == "play":
             top = body.top - (10 if hat >= 0 else 0)
