@@ -517,6 +517,29 @@ HAT_ORDER = [_HAT_INDEX[name] for _, names in HAT_TIERS for name in names]
 HAT_TIER_COLOR = {_HAT_INDEX[name]: col for col, names in HAT_TIERS for name in names}
 HAT_TIER_NAME = {_HAT_INDEX[name]: TIER_NAMES[t] for t, (_, names) in enumerate(HAT_TIERS) for name in names}
 assert sorted(HAT_ORDER) == list(range(len(HATS)))
+# hat and color sets: wearing any of a set's hats with any of its colors leaves a trail of little bits behind
+# Clawd. (name, hats, colors, bit colors, how the bits move: rise | fall | burst | drift | hearts)
+SETS = [
+    ("SPOOKY", ["WITCH HAT"], ["PUMPKIN PETE"], [(240, 140, 50), (150, 110, 200)], "rise"),
+    ("WINTER", ["SANTA HAT", "USHANKA"], ["FROSTY FRANK"], [(240, 246, 255), (190, 225, 255)], "fall"),
+    ("NINJA", ["NINJA BAND"], ["NINJA NICK"], [(90, 86, 104), (130, 126, 146)], "rise"),
+    ("SOLDIER", ["ARMY HELMET"], ["CAMO CODY"], [(118, 138, 84), (76, 92, 56)], "fall"),
+    ("INFERNO", ["FLAME CROWN", "FIREFIGHTER"], ["LAVA LUKE", "PHOENIX PHIL"],
+     [(255, 150, 40), (240, 90, 30), (255, 210, 90)], "rise"),
+    ("STORM", ["STORM CLOUD", "LIGHTNING CROWN"], ["THUNDER THEO", "LIGHTNING LANGLEY"],
+     [(255, 226, 102), (255, 250, 220)], "burst"),
+    ("SWEETHEART", ["HEART CROWN"], ["HEARTFELT HOPE", "CHERRY CHLOE"], [(255, 120, 160), (232, 72, 72)], "hearts"),
+    ("ROBOT", ["ROBOT ANTENNA"], ["ROBO ROB"], [(150, 240, 255), (180, 186, 200)], "burst"),
+    ("SPACE", ["SPACE HELMET", "UFO"], ["GALAXY GRACE", "COSMIC COLE", "STARLIGHT STELLA"],
+     [(255, 255, 255), (200, 170, 255), (150, 200, 255)], "drift"),
+    ("ROYAL", ["CROWN", "KING'S CROWN"], ["GOLDEN GABE", "JACKPOT JACK"], [(255, 226, 102), (232, 176, 75)], "burst"),
+    ("PIRATE", ["PIRATE HAT"], ["OCEAN OLIVIA"], [(176, 206, 250), (240, 246, 255)], "rise"),
+    ("SCRAPYARD", ["SCRAP CROWN"], ["MAGNETIC MILO"], [(190, 196, 210), (224, 92, 108), (90, 130, 230)], "fall"),
+    ("GUARDIAN", ["SHIELD CROWN", "KNIGHT HELMET"], ["GUARDIAN GRANT"], [(127, 200, 255), (230, 246, 255)], "drift"),
+    ("GARDEN", ["SPROUT", "FLOWER CROWN"], ["MINTY MAYA", "SLIME STEVE"], [(90, 200, 110), (255, 176, 200)], "fall"),
+]
+assert all(h in _HAT_INDEX for _, hs, _, _, _ in SETS for h in hs)
+assert all(c in _SKIN_INDEX for _, _, cs, _, _ in SETS for c in cs)
 GALLERY_COLS, GALLERY_ROWS, GALLERY_CELL = 6, 5, 58  # the gallery's grid of hats or colors, a page at a time
 JESTER_WINDOW = 3.0  # seconds after a shield pops that losing your last life earns the jester hat
 
@@ -1607,6 +1630,43 @@ class Game:
             self.skin = self.skin_viewing
             self.save_colors()
 
+    # ---------- sets ----------
+    def worn_set(self):
+        """The set Clawd is wearing right now (a hat and color that belong together), or None."""
+        hat = self.viewing if self.mode == "title" else self.worn
+        skin = self.skin_viewing if self.mode == "title" else self.skin
+        if hat < 0 or hat not in self.unlocked or skin not in self.skins:
+            return None
+        return next((st for st in SETS if HATS[hat][0] in st[1] and SKINS[skin][0] in st[2]), None)
+
+    def sets_with(self, i, hats):
+        """The sets a hat (or color) belongs to."""
+        name = HATS[i][0] if hats else SKINS[i][0]
+        return [st for st in SETS if name in (st[1] if hats else st[2])]
+
+    def set_trail(self, dt):
+        """Bits drifting off Clawd while he wears a set: lots while he moves, a few while he stands."""
+        st = self.worn_set()
+        if not st:
+            return
+        p = self.p
+        moving = abs(p["vx"]) > 40 or not p["on_ground"]
+        if random.random() > dt * (40 if moving else 6):
+            return
+        kind = st[4]
+        x, y = p["x"] + random.uniform(4, PW - 4), p["y"] + random.uniform(4, PH - 4)
+        vx, vy, g, life = random.uniform(-10, 10) - p["vx"] * 0.15, 0.0, 0, 0.9
+        if kind in ("rise", "hearts"):
+            vy, g = random.uniform(-40, -20), -20
+        elif kind == "fall":
+            vy, g = random.uniform(5, 20), 30
+        elif kind == "burst":
+            vx, vy, life = random.uniform(-70, 70), random.uniform(-70, 40), 0.4
+        else:  # drift: slow and long-lived, like dust in the air
+            vx, vy, life = random.uniform(-15, 15), random.uniform(-15, 15), 1.4
+        self.parts.append(dict(x=x, y=y, vx=vx, vy=vy, g=g, life=life, c=random.choice(st[3]),
+                               s=random.choice((2, 3)), heart=kind == "hearts"))
+
     # ---------- gallery ----------
     def open_gallery(self):
         """Every hat or color on one screen, easiest to hardest, starting on what's being worn."""
@@ -1747,6 +1807,15 @@ class Game:
             self.text(parts[1] if len(parts) > 1 else parts[0], 112, 480, 9, DIM, "left")
             if len(parts) > 2:
                 self.text(parts[2], 112, 496, 9, INK, "left")
+        sets = self.sets_with(i, hats)
+        if sets:
+            st = sets[0]
+            if st is self.worn_set():
+                line, col = f"{st[0]} SET ON", GOLD
+            else:
+                partners = st[2] if hats else st[1]
+                line, col = f"{st[0]} SET  WEAR WITH {' OR '.join(partners[:2])}", DIM
+            self.text(line, W / 2, 514, 8, col)
         if TOUCH:
             self.button("BACK", W / 2, 534, 140, 30, self.go("title"), 12, DIM)
         else:
@@ -2048,6 +2117,8 @@ class Game:
 
     def update(self, dt, controls):
         self.swing_sprout(dt)
+        if self.mode in ("play", "title"):
+            self.set_trail(dt)
         for q in self.parts:
             q["life"] -= dt
             q["vy"] += q.get("g", 900) * dt  # flames have negative gravity and float up
