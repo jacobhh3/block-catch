@@ -243,6 +243,8 @@ HAT_COLORS = {
     "Z": (64, 60, 80), "z": (112, 106, 128), "E": (90, 200, 110), "e": (50, 130, 70),
     # welding glass, pale leaf vein
     "D": (34, 70, 48), "j": (170, 240, 160),
+    # see-through helmet glass and UFO beam, flame orange
+    "q": (170, 220, 255, 45), "x": (170, 255, 170, 70), "O": (240, 140, 50),
 }
 HATS = [
     ("PARTY HAT", 20, ["......w......",
@@ -272,11 +274,13 @@ HATS = [
                     "..wYYYYYYYy..",
                     "..YRYYCYYUy..",
                     "..yyyyyyyyy.."]),
-    ("VIKING HELMET", "bomb_bounces", ["H...........H", "hH..SSSSS..Hh", ".hHSSSSSSSHh.", "..SsSsSsSsS..", "..sssssssss.."]),
+    ("VIKING HELMET", "bomb_bounces", ["H...........H", "hH..SSSSS..Hh", ".hHSSSSSSSHh.", "..SsSsSsSsS..",
+                                       "..sssssssss..", "......s......"]),
     ("ARMY HELMET", "hour", ["....AAAAA....", "...AaAAAAAA..", "..AAAAAaAAA..", "..AaAAAAAaA..", ".aaaaaaaaaaa."]),
-    ("SPACE HELMET", "sky", ["......R......", "......W......", "...WWWWWWW...", "..WVVVVVVVW..", "..WVvVVVVVW..",
-                             "..WWWWWWWWW.."]),
-    ("PIRATE HAT", "golds", ["...ZZZZZZZ...", "..ZZZWZWZZZ..", "..ZZZZWZZZZ..", "ZZZZZZZZZZZZZ", ".zzzzzzzzzzz."]),
+    ("SPACE HELMET", "airtime", ["......R......", "......W......", "....WWWWW....", "..WWqqqqqWW..", ".WqqqqqqqqqW.",
+                                 ".WqWqqqqqqqW.", ".WqqqqqqqqqW.", ".WqqqqqqqqqW.", "..WWWWWWWWW.."]),
+    ("PIRATE HAT", "golds", ["...ZZZZZZZ...", "..ZZZWZWZZZ..", "..ZZZZWZZZZ..", "ZZZZZZZZZZZZZ", ".zzzzzzzzzzz.",
+                             ".......ZZZ...", ".......ZZZ...", "........Z...."]),
     ("CHEF HAT", "score500", ["...WW.WW.WW..", "..WWWWWWWWW..", "..WWWWWWWWW..", "...WWWWWWW...", "...zzzzzzz..."]),
     ("WIZARD HAT", "dances", ["......U......", ".....UUw.....", "....UUUUU....", "...UwUUUUU...", "..UUUUUwUUU..",
                               "KKKKKKKKKKKKK"]),
@@ -284,7 +288,7 @@ HATS = [
     ("HARD HAT", "blocks", ["....YYYYY....", "...YYwYYYY...", "..YYYYYYYYY..", "yyyyyyyyyyyyy"]),
     ("FIREFIGHTER", "hotfoots", ["....RRRRR....", "...RRYYYRR...", "..RRRYRYRRR..", "rrrrrrrrrrrrr"]),
     ("KNIGHT HELMET", "shield_saves", [".....RRr.....", "....RR.......", "...SSSSSSS...", "..SsSSSSSsS..",
-                                       "..SSZZZZZSS..", "..sssssssss.."]),
+                                       "..SSSSSSSSS..", "..SZZZZZZZS..", "..SSsSsSsSS..", "...sssssss..."]),
     ("SOMBRERO", "walljumps", ["......T......", ".....TNT.....", "....TNNNT....", "...RYRYRYR...", "TNNNNNNNNNNNT",
                                ".nnnnnnnnnnn."]),
     ("HALO", "clean", ["...wwwwwww...", "..w.......w..", "...YYYYYYY...", "............."]),
@@ -293,14 +297,14 @@ HATS = [
     ("CAT EARS", "flips", ["..N.......N..", "..NP.....PN..", "..NNN...NNN.."]),
     ("PROPELLER CAP", "air100", ["..BBBB.RRRR..", "......Y......", "....RYBRY....", "...BBRRRBB...", "..YYYYYYYYY.."]),
     ("GRAD CAP", "score2000", [".ZZZZZZZZZZZ.", "ZZZZZZYZZZZZZ", "...zzzzzzzY..", "...zzzzzzzY.."]),
-    ("HEADPHONES", "playtime", ["...zzzzzzz...", "..z.......z..", ".RR.......RR.", ".RR.......RR."]),
+    ("HEADPHONES", "playtime", ["...zzzzzzz...", "..z.......z..", ".z.........z.", ".RR.......RR.", ".RR.......RR."]),
     ("FLOWER CROWN", "hearts", [".LP.wY.LP.wY.", ".PL.Yw.PL.Yw.", "eEeEeEeEeEeEe"]),
     ("ROBOT ANTENNA", "zapped", ["......R......", "......z......", "......z......", "....zzzzz....", "...zSSSSSz..."]),
     ("SANTA HAT", "december", ["..........W..", "........RRW..", ".....RRRRr...", "...RRRRRRR...", "..WWWWWWWWW.."]),
     ("WITCH HAT", "october", [".......K.....", "......KK.....", ".....KKKK....", "....KGGGGK...", "KKKKKKKKKKKKK"]),
     ("CAPTAIN HAT", "days", ["...WWWWWWW...", "..WWWWYWWWW..", "..ZZZZZZZZZ..", "..zzzzzzzzzz."]),
     ("MUSHROOM CAP", "block_bounces", ["....RRRRR....", "..RRWRRRWRR..", ".RRRRRWRRRRR.", ".WWWWWWWWWWW."]),
-    ("NINJA BAND", "dashes", ["RRRRRRRRRRRRR", "rrrrrrrrrrrRr", "...........rR"]),
+    ("NINJA BAND", "dashes", ["..RRRSSSRRRR.", "..rrrSsSrrrRR", "...........rR"]),
     ("JESTER HAT", "jester", ["R...........B", "rR.........Bb", ".RR..YYY..BB.", "..RRRBBBBBB..", "..YYYYYYYYY.."]),
     ("WELDING MASK", "magnets_total", ["...zzzzzzz...", "..zZZZZZZZz..", "..ZZZZZZZZZ..", "..ZDDDDDDDZ..",
                                        "..ZDeDDDDDZ..", "..ZDDDDDDDZ..", "...ZZZZZZZ..."]),
@@ -308,15 +312,30 @@ HATS = [
                             ".TTTTRTRTTTT.", ".NN.......NN.", ".nN.......Nn."]),
     ("PIKMIN SPROUT", "sky_total", [".......EE....", "......EEje...", "......Ejee...", ".....EjEe....",
                                     ".....Eje.....", "......e......", "......e......", "......e......"]),
+    ("KING'S CROWN", "allhats", ["......w......", ".....wYw.....", "..Y...Y...Y..", "..YYRRYRRYY..", "..YRRRRRRRY..",
+                                 "..YCYRYUYCY..", "..yyyyyyyyy..", ".WZWWWZWWWZW."]),
+    ("DRAGON HELM", "score10000", ["H...........H", "hH.........Hh", ".hH.eEEEe.Hh.", "..heeEeEeeh..", "..eEeeeeeEe..",
+                                   "..eeeEeEeee..", "..ee.eee.ee..", "..ee.eee.ee..", "...W.W.W.W..."]),
+    ("UFO", "sky500", [".....VVV.....", "....VwVVV....", "..SSSSSSSSS..", "SYSSRSSYSSRSS", ".sssssssssss.",
+                       "...xxxxxxx...", "...xxxxxxx..."]),
+    ("FLAME CROWN", 300, ["..R...R...R..", ".RO..ROR..OR.", ".ROY.RYO.YOR.", "..YYYYYYYYY..", "..yyyyyyyyy.."]),
+    ("SAMURAI HELMET", "playtime10", ["Y...........Y", ".Y.........Y.", "..Y...w...Y..", "...YrrYrrY...",
+                                      "..rRRRRRRRr..", ".rRRRRRRRRRr.", "rrY.......Yrr"]),
 ]
 # hats that hang down over Clawd's head (rows below the top of his head), like a mask over his eyes
-HAT_DROP = {"WELDING MASK": 5, "USHANKA": 3}
+HAT_DROP = {"WELDING MASK": 5, "USHANKA": 3, "SPACE HELMET": 5, "KNIGHT HELMET": 5, "PIRATE HAT": 4,
+            "HEADPHONES": 3, "NINJA BAND": 3, "VIKING HELMET": 2, "KING'S CROWN": 1, "DRAGON HELM": 5,
+            "SAMURAI HELMET": 2}
+# brimmed hats sit one row down, resting on his head
+HAT_DROP.update({n: 1 for n in ["BALL CAP", "COWBOY HAT", "TOP HAT", "ARMY HELMET", "CHEF HAT", "BEANIE", "HARD HAT",
+                                "FIREFIGHTER", "SOMBRERO", "FLOWER CROWN", "GRAD CAP", "SANTA HAT", "WITCH HAT",
+                                "CAPTAIN HAT", "MUSHROOM CAP"]})
 # A hat challenge: (goal, where it's counted, what the menu says). "total" counts over all games (saved),
 # "game" counts in one game, and "event" is a one-off that's either done or not.
 HAT_GOALS = {
     "bomb_bounces": (25, "total", "BOUNCE OFF 25 BOMBS"),
     "hour": (3600, "game", "SURVIVE 1 HOUR IN ONE GAME"),
-    "sky": (1, "game", "WALL JUMP TO THE TOP OF THE SKY"),
+    "airtime": (300, "game", "STAY IN THE AIR FOR 5 MINUTES STRAIGHT"),
     "golds": (20, "game", "CATCH 20 GOLD IN ONE GAME"),
     "score500": (500, "game", "SCORE 500 IN ONE GAME"),
     "dances": (10, "total", "DANCE 10 TIMES"),
@@ -341,12 +360,35 @@ HAT_GOALS = {
     "dashes": (200, "total", "DASH 200 TIMES"),
     "jester": (1, "game", "LOSE YOUR LAST LIFE RIGHT AFTER A SHIELD"),
     "magnets_total": (100, "total", "CATCH 100 MAGNETS"),
-    "walljumps200": (200, "total", "WALL JUMP 200 TIMES"),  # counts the same wall jumps as the sombrero
+    "walljumps200": (200, "total", "WALL JUMP 200 TIMES"),
     "sky_total": (50, "total", "TOUCH THE SKY 50 TIMES"),
+    "allhats": (0, "total", "UNLOCK EVERY OTHER HAT"),  # goal filled in below
+    "score10000": (10000, "game", "SCORE 10000 IN ONE GAME"),
+    "sky500": (500, "total", "TOUCH THE SKY 500 TIMES"),
+    "playtime10": (10 * 3600, "total", "PLAY FOR 10 HOURS"),
 }
+HAT_GOALS["allhats"] = (len(HATS) - 1, "total", "UNLOCK EVERY OTHER HAT")
+# challenges that read another challenge's counter (a second, bigger goal for the same thing)
+HAT_STAT = {"walljumps200": "walljumps", "sky500": "sky_total", "playtime10": "playtime"}
 # everything counted over all games (saved with the hats)
-TOTAL_STATS = [k for k, (_, scope, _) in HAT_GOALS.items() if scope == "total" and k not in ("days", "walljumps200")] + [
+TOTAL_STATS = [k for k, (_, scope, _) in HAT_GOALS.items() if scope == "total" and k not in ("days", "allhats") and k not in HAT_STAT] + [
     "golds_total", "block_bounces_total", "combo4", "dash_hits", "best_score", "total_score"]
+# hat tiers, like the colors': the picker goes easiest to hardest and names are colored by tier
+HAT_TIERS = [
+    ((120, 210, 140), ["PARTY HAT", "BALL CAP", "COWBOY HAT", "TOP HAT"]),  # the original streak hats
+    ((127, 200, 255), ["CROWN"]),
+    ((232, 176, 75), ["BEANIE", "CHEF HAT", "WIZARD HAT", "KNIGHT HELMET", "NINJA BAND", "VIKING HELMET", "DEVIL HORNS",
+                      "BUNNY EARS", "PIKMIN SPROUT", "USHANKA", "HEADPHONES", "CAPTAIN HAT", "SANTA HAT", "WITCH HAT",
+                      "FIREFIGHTER"]),
+    ((240, 110, 90), ["PIRATE HAT", "HARD HAT", "FLOWER CROWN", "ROBOT ANTENNA", "MUSHROOM CAP", "WELDING MASK",
+                      "CAT EARS", "GRAD CAP", "SOMBRERO", "PROPELLER CAP", "HALO", "JESTER HAT"]),
+    ((200, 140, 255), ["ARMY HELMET", "SPACE HELMET", "KING'S CROWN", "DRAGON HELM", "UFO", "FLAME CROWN",
+                       "SAMURAI HELMET"]),
+]
+_HAT_INDEX = {h[0]: i for i, h in enumerate(HATS)}
+HAT_ORDER = [_HAT_INDEX[name] for _, names in HAT_TIERS for name in names]
+HAT_TIER_COLOR = {_HAT_INDEX[name]: col for col, names in HAT_TIERS for name in names}
+assert sorted(HAT_ORDER) == list(range(len(HATS)))
 JESTER_WINDOW = 3.0  # seconds after a shield pops that losing your last life earns the jester hat
 
 HEART = [".XX.XX.", "XXXXXXX", "XXXXXXX", ".XXXXX.", "..XXX..", "...X..."]
@@ -961,7 +1003,7 @@ class Game:
         self.hearts = []
         self.p = dict(x=W / 2 - PW / 2, y=GROUND - PH, vx=0.0, vy=0.0, on_ground=True,
                       walk=0.0, blink=0.0, chain=0, jump_buffer=0.0, block_grace=0.0, sliding=0, slide_t=0.0, slide_panic=False, bj_t=9.0, bj_flip=False, bomb_fx=None, bomb_t=0.0,
-                      dash=0.0, dash_dir=0, dash_cd=0.0, dance=0.0, taps=0, tap_gap=0.0)
+                      dash=0.0, dash_dir=0, dash_cd=0.0, dance=0.0, taps=0, tap_gap=0.0, air_t=0.0)
         self.countdown, self.wake = 0.0, 0.0  # seconds left before play resumes; "!" after waking
         self.leave_in = None  # seconds left before quitting to the main menu, once MAIN MENU is chosen
         self.purples, self.bombs_hit = 0, 0  # this game's progress toward the purple and red colors
@@ -1183,8 +1225,12 @@ class Game:
         goal, scope, _ = HAT_GOALS[need]
         if need == "days":
             return len(self.hat_stats["days"]), goal
-        if need == "walljumps200":
-            return self.hat_stats["walljumps"], goal
+        if need in HAT_STAT:
+            return self.hat_stats[HAT_STAT[need]], goal
+        if need == "allhats":
+            return len(self.unlocked - {_HAT_INDEX["KING'S CROWN"]}), goal
+        if need == "airtime":
+            return self.p["air_t"], goal
         if scope == "total":
             return self.hat_stats[need], goal
         if need == "hour":
@@ -1193,7 +1239,7 @@ class Game:
             return self.t - self.game_counts["last_loss"], goal
         if need == "air100":
             return self.p["chain"], goal
-        if need in ("score500", "score2000"):
+        if need in ("score500", "score2000", "score10000"):
             return self.score, goal
         if scope == "event":
             return (goal if self.mode in ("play", "paused", "resume") and datetime.date.today().month == goal else 0), goal
@@ -1232,6 +1278,8 @@ class Game:
         have, goal = self.hat_progress(need)
         if need == "playtime":
             return f"LOCKED  {label}  {int(have // 60)}/{goal // 60} MIN"
+        if need == "playtime10":
+            return f"LOCKED  {label}  {have / 3600:.1f}/{goal // 3600}"
         return f"LOCKED  {label}  {int(min(have, goal))}/{goal}"
 
     def save_progress(self):
@@ -1327,7 +1375,8 @@ class Game:
 
     def pick_hat(self, d):
         """Title screen: cycle through no hat and every hat. Locked ones can be looked at but not worn."""
-        self.viewing = (self.viewing + 1 + d) % (len(HATS) + 1) - 1
+        order = [-1] + HAT_ORDER  # no hat, then easiest to hardest
+        self.viewing = order[(order.index(self.viewing) + d) % len(order)]
         if self.viewing == -1 or self.viewing in self.unlocked:
             self.worn = self.viewing
             self.save_hats()
@@ -1683,6 +1732,7 @@ class Game:
             return
         self.t += dt
         self.hat_stats["playtime"] += dt
+        p["air_t"] = 0.0 if p["on_ground"] else p["air_t"] + dt
         look = SKINS[self.skin][1]
         if look == "phoenix" and random.random() < 0.4:  # embers rising off him
             self.parts.append(dict(x=p["x"] + random.uniform(0, PW), y=p["y"] + random.uniform(0, 10),
@@ -1771,8 +1821,6 @@ class Game:
         if p["x"] > W - PW:
             p["x"], p["vx"] = W - PW, 0.0
         if p["y"] < 64:  # keep Clawd under the HUD
-            if not self.game_counts.get("sky"):
-                self.count("sky")
             if not p.get("at_sky"):
                 p["at_sky"] = True  # each separate touch of the top counts
                 self.count("sky_total")
@@ -2482,7 +2530,7 @@ class Game:
                 if self.viewing == -1:
                     name, col = "NO HAT", DIM
                 else:
-                    name, col = HATS[self.viewing][0], GOLD if self.viewing in self.unlocked else DIM
+                    name, col = HATS[self.viewing][0], HAT_TIER_COLOR[self.viewing]  # colored by how hard it is to get
                 if TOUCH:
                     self.button("<", 30, 406, 44, 36, lambda: self.pick_hat(-1), 14, DIM)
                     self.button(">", W - 30, 406, 44, 36, lambda: self.pick_hat(1), 14, DIM)
