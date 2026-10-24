@@ -321,25 +321,10 @@ def _bright(rows, cols, a, b):
     return ["".join(b if ch == a and c in cols else ch for c, ch in enumerate(row)) for row in rows]
 
 
-_ALARM = ["..rR.....Rr..", "...RWWWWWR...", "..RWWWZWWWR..", "..RWWWZWWWR..", "..RWWWWZZWR..", "...RWWWWWR...",
-          "...Z.....Z..."]
-_TROPHY = ["...YYYYYYY...", ".Y.YwYYYYY.Y.", ".YYYwYYYYYYY.", "...YYYYYYY...", "....yYYYy....", ".....YYY.....",
-           "....yyyyy...."]
-
-
-def _hourglass(n):
-    """The hourglass with n of its 9 grains of sand run through to the bottom."""
-    rows = [list(r) for r in ["..TTTTTTTTT..", "...l.....l...", "....l...l....", ".....l.l.....", ".............",
-                              ".....l.l.....", "....l...l....", "...l.....l...", "..TTTTTTTTT.."]]
-    top = [(1, c) for c in range(4, 9)] + [(2, c) for c in range(5, 8)] + [(3, 6)]  # drains from the top down
-    bottom = [(7, c) for c in range(4, 9)] + [(6, c) for c in range(5, 8)] + [(5, 6)]  # fills from the bottom up
-    for r, c in top[n:]:
-        rows[r][c] = "Y"
-    for r, c in bottom[:n]:
-        rows[r][c] = "Y"
-    if 0 < n < 9:
-        rows[4][6] = "y"  # the trickle
-    return ["".join(r) for r in rows]
+_TIARA = ["......l......", ".....SlS.....", "..S..SSS..S..", "..SSSSSSSSS.."]
+_FIRE_HAIR = ["......R......", ".....ROR.....", "....ROYOR....", "...ROYwYOR...", "...ROYYYOR...", "....RRRRR...."]
+_GOLD_CAP = ["....YYYYY....", "...YYYwYYY...", "..YYYwwYYYY..", "..YYYYwYYYY..", "..yyyyyyyyyyy"]
+_NIGHTCAP = ["..........WW.", "........BBW..", ".....BBBBb...", "...BBYBBBBb..", "..BBBBBwBBBb.", "..WWWWWWWWW.."]
 
 
 _PHARAOH = [".....YYY.....", "...YYYwYYY...", "..BBBBBBBBB..", ".YYYYYYYYYYY.", ".BB.......BB.", ".YY.......YY.",
@@ -428,12 +413,12 @@ HATS = [
     ("SCRAP CROWN", "magnets2000", _SCRAP_CROWN),
     ("SHIELD CROWN", "shields250", _SHIELD_CROWN),
     # earned only in the Daily Challenge
-    ("ALARM CLOCK", "dailies3", _ALARM),
-    ("CALENDAR", "dailystreak7", ["...Z.....Z...", "..RRRRRRRRR..", "..RRRRRRRRR..", "..WWWWWWWWW..", "..WWZZZZWWW..",
-                                  "..WWWWWZWWW..", "..WWWWZWWWW..", "..WWWWZWWWW..", "..WWWWWWWWW.."]),
-    ("LAUREL WREATH", "dailytop10", ["..e.......e..", ".eE.......Ee.", ".Ee.......eE.", "..eE.....Ee..", "...eEYYYEe..."]),
-    ("TROPHY", "dailywin", _TROPHY),
-    ("HOURGLASS", "dailies30", _hourglass(0)),
+    ("MEDAL BAND", "dailies3", ["..RRRRRRRRR..", ".....BYB.....", ".....YwY.....", "......Y......"]),
+    ("SILVER TIARA", "dailystreak7", _TIARA),
+    ("FIRE HAIR", "dailytop10", _FIRE_HAIR),
+    ("GOLD #1 CAP", "dailywin", _GOLD_CAP),
+    ("NIGHTCAP", "dailies30", _NIGHTCAP),
+    ("GOLD LAUREL", "dailywins10", ["..Y.Y...Y.Y..", ".YyYyY.YyYyY.", "..yyyyyyyyy.."]),
 ]
 # animated hats: (frames per second, frames). The propeller only spins while he's in the air.
 HAT_ANIM = {
@@ -469,9 +454,11 @@ HAT_ANIM = {
     "PHARAOH": (3, [_PHARAOH, [row.translate(str.maketrans("YB", "BY")) for row in _PHARAOH]]),
 }
 HAT_ANIM.update({
-    "ALARM CLOCK": (8, [_ALARM] * 10 + [_with(_ALARM, (0, ".rR.......Rr.")), _ALARM] * 3),  # rings now and then
-    "TROPHY": (4, [_TROPHY, _with(_TROPHY, (0, "w..YYYYYYY...")), _TROPHY, _with(_TROPHY, (0, "...YYYYYYY..w"))]),
-    "HOURGLASS": (3, [_hourglass(n) for n in range(10)] + [_hourglass(9)] * 3),
+    "SILVER TIARA": (2, [_TIARA, _with(_TIARA, (0, "......w......"), (1, ".....SwS....."))]),  # the gem twinkles
+    "FIRE HAIR": (7, [_FIRE_HAIR, _with(_FIRE_HAIR, (0, ".....R......."), (1, "....ROR......"), (2, "....ROYOR....")),
+                      _FIRE_HAIR, _with(_FIRE_HAIR, (0, ".......R....."), (1, "......ROR...."), (2, ".....ROYOR..."))]),
+    "GOLD #1 CAP": (2, [_GOLD_CAP, _with(_GOLD_CAP, (0, "....YYYYw...."))]),
+    "NIGHTCAP": (2, [_NIGHTCAP, _with(_NIGHTCAP, (3, "...BBYBwBBb.."), (4, "..BBBBBBBBBb."))]),  # a twinkling star
 })
 HAT_AIR_ONLY = {"PROPELLER CAP"}
 HAT_SPRING = {"SPROUT"}  # bends and wobbles as Clawd moves (see Game.swing_sprout)
@@ -480,7 +467,8 @@ HAT_BOB = {"UFO": 5, "STORM CLOUD": 3, "DISCO BALL": 3}  # floating hats drift u
 HAT_DROP = {"WELDING MASK": 5, "USHANKA": 3, "SPACE HELMET": 5, "KNIGHT HELMET": 5, "PIRATE HAT": 4,
             "HEADPHONES": 3, "NINJA BAND": 3, "VIKING HELMET": 2, "KING'S CROWN": 1, "DRAGON HELM": 5,
             "SAMURAI HELMET": 2, "SUNGLASSES": 4, "BOW": 1, "FEZ": 1,
-            "VALKYRIE HELM": 1, "PHARAOH": 4, "DEMOLITION HAT": 1, "CALENDAR": 1, "LAUREL WREATH": 1, "HEART CROWN": 1,
+            "VALKYRIE HELM": 1, "PHARAOH": 4, "DEMOLITION HAT": 1, "MEDAL BAND": 4, "SILVER TIARA": 1, "FIRE HAIR": 1,
+            "GOLD #1 CAP": 1, "NIGHTCAP": 1, "GOLD LAUREL": 1, "HEART CROWN": 1,
             "LIGHTNING CROWN": 1, "SCRAP CROWN": 1, "SHIELD CROWN": 1}
 # brimmed hats sit one row down, resting on his head
 HAT_DROP.update({n: 1 for n in ["BALL CAP", "COWBOY HAT", "TOP HAT", "ARMY HELMET", "CHEF HAT", "BEANIE", "HARD HAT",
@@ -540,10 +528,11 @@ HAT_GOALS = {
     "dailytop10": (1, "total", "FINISH A DAILY IN THE TOP 10"),
     "dailywin": (1, "total", "WIN A DAILY (#1 WHEN THE DAY ENDS)"),
     "dailies30": (30, "total", "PLAY 30 DAILY CHALLENGES"),
+    "dailywins10": (10, "total", "WIN 10 DAILY CHALLENGES"),
 }
 # the daily-only hats count Daily Challenge results (see Game.daily_stat), not things done in normal games
 HAT_DAILY = {"dailies3": "dailies", "dailystreak7": "daily_streak", "dailytop10": "daily_top10",
-             "dailywin": "daily_wins", "dailies30": "dailies"}
+             "dailywin": "daily_wins", "dailies30": "dailies", "dailywins10": "daily_wins"}
 DAILY_STATS = {"dailies", "daily_streak", "daily_top10", "daily_wins"}
 HAT_GOALS["allhats"] = (len(HATS) - 1, "total", "UNLOCK EVERY OTHER HAT")
 # challenges that read another challenge's counter (a second, bigger goal for the same thing)
@@ -558,15 +547,15 @@ TOTAL_STATS = [k for k, (_, scope, _) in HAT_GOALS.items() if scope == "total" a
 HAT_TIERS = [
     ((120, 210, 140), ["PARTY HAT", "BALL CAP", "COWBOY HAT", "TOP HAT"]),  # the original streak hats
     ((127, 200, 255), ["CROWN", "BEANIE", "CHEF HAT", "WIZARD HAT", "KNIGHT HELMET", "NINJA BAND", "SUNGLASSES", "BOW",
-                       "FEZ", "ALARM CLOCK"]),
+                       "FEZ", "MEDAL BAND"]),
     ((232, 176, 75), ["VIKING HELMET", "DEVIL HORNS", "BUNNY EARS", "SPROUT", "USHANKA", "HEADPHONES",
-                      "CAPTAIN HAT", "SANTA HAT", "WITCH HAT", "FIREFIGHTER", "CALENDAR"]),
+                      "CAPTAIN HAT", "SANTA HAT", "WITCH HAT", "FIREFIGHTER", "SILVER TIARA"]),
     ((240, 110, 90), ["PIRATE HAT", "HARD HAT", "FLOWER CROWN", "ROBOT ANTENNA", "MUSHROOM CAP", "WELDING MASK",
-                      "CAT EARS", "GRAD CAP", "SOMBRERO", "PROPELLER CAP", "HALO", "JESTER HAT", "LAUREL WREATH"]),
+                      "CAT EARS", "GRAD CAP", "SOMBRERO", "PROPELLER CAP", "HALO", "JESTER HAT", "FIRE HAIR"]),
     ((200, 140, 255), ["ARMY HELMET", "SPACE HELMET", "DRAGON HELM", "UFO", "FLAME CROWN", "SAMURAI HELMET",
                        "STORM CLOUD", "VALKYRIE HELM", "DISCO BALL", "DEMOLITION HAT", "PHARAOH", "HEART CROWN",
-                       "LIGHTNING CROWN", "SCRAP CROWN", "SHIELD CROWN", "TROPHY", "HOURGLASS",
-                       "KING'S CROWN"]),  # king's crown last: it needs every other hat
+                       "LIGHTNING CROWN", "SCRAP CROWN", "SHIELD CROWN", "GOLD #1 CAP", "GOLD LAUREL",
+                       "NIGHTCAP", "KING'S CROWN"]),  # king's crown last: it needs every other hat
 ]
 _HAT_INDEX = {h[0]: i for i, h in enumerate(HATS)}
 HAT_ORDER = [_HAT_INDEX[name] for _, names in HAT_TIERS for name in names]
