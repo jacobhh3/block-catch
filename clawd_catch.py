@@ -517,6 +517,7 @@ HAT_ORDER = [_HAT_INDEX[name] for _, names in HAT_TIERS for name in names]
 HAT_TIER_COLOR = {_HAT_INDEX[name]: col for col, names in HAT_TIERS for name in names}
 HAT_TIER_NAME = {_HAT_INDEX[name]: TIER_NAMES[t] for t, (_, names) in enumerate(HAT_TIERS) for name in names}
 assert sorted(HAT_ORDER) == list(range(len(HATS)))
+GALLERY_COLS, GALLERY_ROWS, GALLERY_CELL = 6, 5, 58  # the gallery's grid of hats or colors, a page at a time
 JESTER_WINDOW = 3.0  # seconds after a shield pops that losing your last life earns the jester hat
 
 HEART = [".XX.XX.", "XXXXXXX", "XXXXXXX", ".XXXXX.", "..XXX..", "...X..."]
@@ -1037,6 +1038,7 @@ class Game:
         self.skin_icons = [make_skin(skin, 0, False, 0.0, px=3) if isinstance(skin, str) else
                            make_clawd(0, False, skin, px=3) for _, skin, _ in SKINS]
         self.skins, self.skin = {0}, 0  # unlocked color indexes, and the one Clawd wears
+        self.gallery, self.gallery_icons = dict(tab="hats", pick=0), {}  # the gallery screen, and its little pictures
         self.zaps = self.landings = 0  # progress toward the colors that count over all games
         try:
             data = load_save(COLORS_FILE)
@@ -1604,6 +1606,151 @@ class Game:
         if self.skin_viewing in self.skins:
             self.skin = self.skin_viewing
             self.save_colors()
+
+    # ---------- gallery ----------
+    def open_gallery(self):
+        """Every hat or color on one screen, easiest to hardest, starting on what's being worn."""
+        self.mode = "gallery"
+        self.gallery = dict(tab="hats", pick=0)
+        self.gallery_tab("hats")
+
+    def gallery_items(self):
+        return HAT_ORDER if self.gallery["tab"] == "hats" else COLOR_ORDER
+
+    def gallery_tab(self, tab):
+        self.gallery["tab"] = tab
+        worn = self.worn if tab == "hats" else self.skin
+        items = self.gallery_items()
+        self.gallery["pick"] = items.index(worn) if worn in items else 0
+
+    def gallery_move(self, d):
+        self.gallery["pick"] = (self.gallery["pick"] + d) % len(self.gallery_items())
+
+    def gallery_page(self, d):
+        per, n = GALLERY_COLS * GALLERY_ROWS, len(self.gallery_items())
+        page = (self.gallery["pick"] // per + d) % -(-n // per)
+        self.gallery["pick"] = min(n - 1, page * per)
+
+    def gallery_tap(self, k):
+        """Touch: the first tap picks a cell, a second tap on it wears it."""
+        if k == self.gallery["pick"]:
+            self.gallery_wear()
+        else:
+            self.gallery["pick"] = k
+
+    def gallery_wear(self):
+        """Wear the picked hat or color (if it's unlocked); a worn hat picked again comes off."""
+        i = self.gallery_items()[self.gallery["pick"]]
+        if self.gallery["tab"] == "hats":
+            if i in self.unlocked:
+                self.worn = self.viewing = -1 if self.worn == i else i
+                self.save_hats()
+                self.play("click")
+        elif i in self.skins:
+            self.skin = self.skin_viewing = i
+            self.save_colors()
+            self.play("click")
+
+    def gallery_key(self, key):
+        if key == pygame.K_ESCAPE:
+            self.mode = "title"
+        elif key == pygame.K_TAB:
+            self.gallery_tab("colors" if self.gallery["tab"] == "hats" else "hats")
+        elif key in (pygame.K_LEFT, pygame.K_a, pygame.K_RIGHT, pygame.K_d):
+            self.gallery_move(-1 if key in (pygame.K_LEFT, pygame.K_a) else 1)
+        elif key in (pygame.K_UP, pygame.K_w, pygame.K_DOWN, pygame.K_s):
+            self.gallery_move(-GALLERY_COLS if key in (pygame.K_UP, pygame.K_w) else GALLERY_COLS)
+        elif key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
+            self.gallery_wear()
+
+    def gallery_icon(self, i, hats, owned):
+        """A small Clawd (in the worn color) with hat i on, or Clawd in color i; dimmed while locked."""
+        key = (hats, i, owned, self.skin)
+        if key not in self.gallery_icons:
+            if hats:
+                body, (name, _, rows) = self.skin_icons[self.skin], HATS[i]
+                hat, drop = make_hat(rows, px=3), HAT_DROP.get(name, 0) * 3
+                lift = max(0, hat.get_height() - drop)
+                art = pygame.Surface((max(body.get_width(), hat.get_width()), body.get_height() + lift), pygame.SRCALPHA)
+                mid = art.get_width() // 2
+                art.blit(body, body.get_rect(midtop=(mid, lift)))
+                art.blit(hat, hat.get_rect(midbottom=(mid, lift + drop)))
+            else:
+                art = self.skin_icons[i].copy()
+            if not owned:
+                art.fill((110, 105, 120, 255), special_flags=pygame.BLEND_RGBA_MULT)
+            self.gallery_icons[key] = art
+        return self.gallery_icons[key]
+
+    def dressed(self, skin, hat, now):
+        """Clawd at full size in a color and hat (hat -1: none), animated, for the gallery's preview."""
+        body = self.skin_sprite(skin, 0, False, now)
+        if hat < 0:
+            return body
+        art, name = self.hat_sprite(hat, now), HATS[hat][0]
+        drop = HAT_DROP.get(name, 0) * PX
+        lift = max(0, art.get_height() - drop)
+        out = pygame.Surface((max(PW, art.get_width()), PH + lift), pygame.SRCALPHA)
+        mid = out.get_width() // 2
+        out.blit(body, body.get_rect(midtop=(mid, lift)))
+        out.blit(art, art.get_rect(midbottom=(mid, lift + drop)))
+        return out
+
+    def draw_gallery(self, now):
+        c, g = self.canvas, self.gallery
+        hats = g["tab"] == "hats"
+        items, have = self.gallery_items(), (self.unlocked if hats else self.skins)
+        tiers, tier_names = (HAT_TIER_COLOR, HAT_TIER_NAME) if hats else (TIER_COLOR, COLOR_TIER_NAME)
+        c.fill(NIGHT, (0, 0, W, H))  # its own screen: nothing of the game behind it
+        self.text("GALLERY", W / 2, 60, 20, GOLD)
+        for k, (tab, label) in enumerate((("hats", f"HATS {len(self.unlocked)}/{len(HATS)}"),
+                                          ("colors", f"COLORS {len(self.skins)}/{len(SKINS)}"))):
+            self.button(label, W / 2 + (k * 2 - 1) * 92, 92, 176, 28, lambda tab=tab: self.gallery_tab(tab), 10,
+                        INK if g["tab"] == tab else DIM)
+        # the grid, a page at a time
+        per = GALLERY_COLS * GALLERY_ROWS
+        page, pages = g["pick"] // per, -(-len(items) // per)
+        x0 = (W - GALLERY_COLS * GALLERY_CELL) / 2
+        worn = self.worn if hats else self.skin
+        for slot in range(min(per, len(items) - page * per)):
+            k = page * per + slot
+            i = items[k]
+            owned = i in have
+            r = pygame.Rect(x0 + slot % GALLERY_COLS * GALLERY_CELL + 2, 114 + slot // GALLERY_COLS * GALLERY_CELL + 2,
+                            GALLERY_CELL - 4, GALLERY_CELL - 4)
+            c.fill(PANEL if owned else NIGHT, r)
+            art = self.gallery_icon(i, hats, owned)
+            c.blit(art, art.get_rect(center=r.center))
+            picked = k == g["pick"]
+            pygame.draw.rect(c, INK if picked else (tiers[i] if owned else EARTH), r, 3 if picked else 1)
+            if i == worn:
+                c.fill(GOLD, (r.right - 9, r.top + 3, 6, 6))  # wearing this one
+            self.buttons.append((r, lambda k=k: self.gallery_tap(k)))
+        if pages > 1:
+            self.button("<", W / 2 - 70, 418, 36, 22, lambda: self.gallery_page(-1), 11, DIM)
+            self.text(f"{page + 1}/{pages}", W / 2, 418, 10, DIM)
+            self.button(">", W / 2 + 70, 418, 36, 22, lambda: self.gallery_page(1), 11, DIM)
+        # the picked one: a big animated preview, its tier, and how to get it or wear it
+        i = items[g["pick"]]
+        preview = self.dressed(self.skin, i, now) if hats else self.dressed(i, self.worn, now)
+        if i not in have:
+            preview = preview.copy()
+            preview.fill((110, 105, 120, 255), special_flags=pygame.BLEND_RGBA_MULT)
+        c.blit(preview, preview.get_rect(midbottom=(58, 496)))
+        self.text(HATS[i][0] if hats else SKINS[i][0], 112, 446, 12, tiers[i], "left")
+        self.text(tier_names[i], 112, 463, 9, tiers[i], "left")
+        if i in have:
+            how = ("TAP AGAIN" if TOUCH else "ENTER") + (" TO TAKE IT OFF" if hats and i == worn else " TO WEAR")
+            self.text("WEARING" if i == worn and not hats else how, 112, 480, 9, DIM, "left")
+        else:
+            parts = (self.hat_status(i) if hats else self.color_status(i)).split("  ")  # LOCKED, how, progress
+            self.text(parts[1] if len(parts) > 1 else parts[0], 112, 480, 9, DIM, "left")
+            if len(parts) > 2:
+                self.text(parts[2], 112, 496, 9, INK, "left")
+        if TOUCH:
+            self.button("BACK", W / 2, 534, 140, 30, self.go("title"), 12, DIM)
+        else:
+            self.text("ARROWS PICK   ENTER WEAR   TAB HATS/COLORS   ESC BACK", W / 2, 534, 8, DIM)
 
     def pick_hat(self, d):
         """Title screen: cycle through no hat and every hat. Locked ones can be looked at but not worn."""
@@ -2776,15 +2923,15 @@ class Game:
                 self.text("hit the blocks before they land", W / 2, 272 - up, 12, DIM)
                 if TOUCH:
                     self.button("PLAY", W / 2, 282, 150, 44, self.start, 18, CLAWD)
-                    self.button("HOW TO PLAY", W / 2 - 122, 328, 112, 30, self.go("help"), 9)
-                    self.button("SCORES", W / 2, 328, 112, 30, self.show_board, 9)
-                    self.button("STATS", W / 2 + 122, 328, 112, 30, self.go("stats"), 9)
+                    for k, (label, action) in enumerate((("HELP", self.go("help")), ("SCORES", self.show_board),
+                                                         ("STATS", self.go("stats")), ("GALLERY", self.open_gallery))):
+                        self.button(label, W / 2 + (k - 1.5) * 92, 328, 86, 30, action, 9)
                     if not self.on_home_screen:
                         self.button("ADD TO HOME SCREEN", W / 2, 366, 354, 30, self.go("home"), 10, GOLD)
                 else:
                     if blink_on:
                         self.text("PRESS SPACE", W / 2, 330, 16, INK)
-                    self.text("I  HELP    H  SCORES    S  STATS    M  SOUND", W / 2, 362, 10, DIM)
+                    self.text("I HELP   H SCORES   S STATS   G GALLERY   M SOUND", W / 2, 362, 10, DIM)
                 if self.update_ready:
                     if TOUCH:
                         self.rainbow_button("NEW VERSION  TAP TO UPDATE", W / 2, 80, 300, 28, self.update_now, 10, now)
@@ -2824,6 +2971,8 @@ class Game:
                     self.button("PLAY", W / 2 + 76, 454, 140, 34, self.start, 12, CLAWD)
                 elif blink_on:
                     self.text("SPACE TO PLAY   ESC TO GO BACK", W / 2, 446, 11, DIM)
+            elif self.mode == "gallery":
+                self.draw_gallery(now)
             elif self.mode == "stats":
                 self.draw_stats()
                 if TOUCH:
@@ -2962,6 +3111,12 @@ class Game:
                         continue
                     if e.key == pygame.K_F11:
                         self.toggle_fullscreen()
+                        continue
+                    if self.mode == "gallery":
+                        self.gallery_key(e.key)
+                        continue
+                    if e.key == pygame.K_g and self.mode == "title":
+                        self.open_gallery()
                         continue
                     if e.key == pygame.K_h and self.mode in ("title", "over"):
                         self.last_key = None
