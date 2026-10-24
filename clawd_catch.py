@@ -170,7 +170,7 @@ COLOR_GOALS = {
     "dances50": ("dances", 50, "DANCE 50 TIMES"),
     "time600": ("time", 600, "SURVIVE 10 MINUTES IN ONE GAME"),
     "dashes1000": ("dashes", 1000, "DASH 1000 TIMES"),
-    "streak100": ("streak", 100, "100 IN A ROW"),
+    "streak100": ("streak", 100, "BREAK 100 BLOCKS WITHOUT LOSING A LIFE"),
     "dashhits100": ("dash_hits", 100, "HIT 100 BLOCKS MID-DASH"),
     "air50": ("chain", 50, "50 IN A ROW IN THE AIR"),
     "landings5000": ("landings", 5000, "LAND 5000 TIMES"),
