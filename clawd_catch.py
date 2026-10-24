@@ -580,6 +580,9 @@ SITE_URL = "https://jacobhh3.github.io/block-catch/"
 VERSION_CHECK = 300  # seconds between checks for a newer build on the website
 SOUND_MODES = ["ON", "EFFECTS ONLY", "OFF"]  # M key / speaker button cycles through these
 MUSIC_VOLUME = {"play": 0.45, "paused": 0.0}  # every other screen: 0.2
+# the song's layers (sounds/music_<name>.ogg, made by make_sounds.py). While playing, layer i joins at combo
+# x(i+1): just bass and drums at first, the whole song at the top combo. The menus play all of them.
+MUSIC_LAYERS = ["base", "beat", "melody", "lead"]
 TOP_N = 10
 LB_FETCH = 100  # scores fetched, so the top 10 can still be filled after keeping one per player
 NAME_LEN = 10
@@ -1086,15 +1089,22 @@ class Game:
                 self.fullscreen = True
         except (OSError, ValueError, AttributeError, TypeError, pygame.error):
             pass
-        self.sfx, self.music_volume, self.notice = {}, None, None
+        self.sfx, self.notice = {}, None
+        self.layers, self.layer_vol = [], [0.0] * len(MUSIC_LAYERS)  # (channel, sound) per music layer, and its volume
         try:
             pygame.mixer.set_num_channels(16)
             folder = resource("sounds")
             for f in os.listdir(folder):
-                if f.endswith(".ogg") and f != "music.ogg":
+                if f.endswith(".ogg") and not f.startswith("music_"):
                     self.sfx[f[:-4]] = pygame.mixer.Sound(os.path.join(folder, f))
-            pygame.mixer.music.load(os.path.join(folder, "music.ogg"))
-            pygame.mixer.music.play(-1)
+            # each music layer loops on its own channel (kept away from the sound effects); all start
+            # together and are the same length, so they stay in step
+            pygame.mixer.set_reserved(len(MUSIC_LAYERS))
+            self.layers = [(pygame.mixer.Channel(i), pygame.mixer.Sound(os.path.join(folder, f"music_{name}.ogg")))
+                           for i, name in enumerate(MUSIC_LAYERS)]
+            for channel, sound in self.layers:
+                channel.set_volume(0.0)
+                channel.play(sound, loops=-1)
         except (pygame.error, OSError):
             pass  # no audio device or no sound files: play on silently
         self.toast, self.toasts = None, []  # "new hat" / "new color" notification, and ones waiting their turn
@@ -1272,15 +1282,24 @@ class Game:
         if self.sound < 2 and name in self.sfx:
             self.sfx[name].play()
 
-    def update_music(self):
-        """Music is full while playing, softer on the menus, silent while paused."""
+    def update_music(self, dt):
+        """Music is full while playing, softer on the menus, silent while paused. While playing, the layers
+        fade in one by one as the combo climbs, and fade back out when the streak ends."""
         vol = 0.0 if self.sound else MUSIC_VOLUME.get(self.mode, 0.2)
-        if vol != self.music_volume:
-            self.music_volume = vol
-            try:
-                pygame.mixer.music.set_volume(vol)
-            except pygame.error:
-                pass
+        building = self.mode in ("play", "resume")
+        for i, (channel, _) in enumerate(self.layers):
+            target = vol if not building or self.multiplier > i else 0.0
+            now = self.layer_vol[i]
+            if now < target:
+                now = min(target, now + dt * 0.9)  # joins over about half a second
+            elif now > target:
+                now = max(target, now - dt * 0.45)  # drops out a bit slower
+            if now != self.layer_vol[i]:
+                self.layer_vol[i] = now
+                try:
+                    channel.set_volume(now)
+                except pygame.error:
+                    pass
 
     def save_settings(self):
         try:
@@ -2988,7 +3007,7 @@ class Game:
                     elif e.key in (pygame.K_SPACE, pygame.K_RETURN) and self.mode not in ("play", "resume"):
                         self.start()
             self.update(dt, self.controls())
-            self.update_music()
+            self.update_music(dt)
             self.draw(pygame.time.get_ticks())
             await asyncio.sleep(0)  # lets the browser run between frames
 

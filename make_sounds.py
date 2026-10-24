@@ -93,8 +93,11 @@ def tones(names, each, wave="square", duty=0.25, last=None):
 
 
 def save(name, sound, volume):
+    """Writes sounds/<name>.ogg, scaled so its loudest point is volume (None: keep the level as it is)."""
     OUT.mkdir(exist_ok=True)
-    sound = (sound / max(1e-9, np.abs(sound).max()) * volume).astype(np.float32)
+    if volume is not None:
+        sound = sound / max(1e-9, np.abs(sound).max()) * volume
+    sound = sound.astype(np.float32)
     # written in small blocks: libsndfile's Vorbis encoder overflows its stack on big ones (Windows)
     with sf.SoundFile(OUT / f"{name}.ogg", "w", RATE, 1, format="OGG", subtype="VORBIS") as f:
         for i in range(0, len(sound), 2048):
@@ -156,14 +159,20 @@ SONG = [
 ]
 
 
+MUSIC_LAYERS = ["base", "beat", "melody", "lead"]  # the game fades these in as the combo climbs
+
+
 def make_music():
+    """The song as four layers of the same length that play in sync: base (bass, kick, snare), beat (hi-hats,
+    arpeggio), melody, and lead (a sparkly octave-up line and extra kicks, for the top combo). They share one
+    volume scale, so together they sound like the full mix."""
     bar = 16 * STEP
     length = samples(bar * len(SONG))
-    track = np.zeros(length + samples(1.0))  # extra room for notes ringing past the end
+    tracks = {name: np.zeros(length + samples(1.0)) for name in MUSIC_LAYERS}  # room for notes ringing past the end
 
-    def put(sound, at, volume):
+    def put(layer, sound, at, volume):
         i = samples(at)
-        track[i:i + len(sound)] += sound * volume
+        tracks[layer][i:i + len(sound)] += sound * volume
 
     kick = fade(osc(slide(150, 45, 0.12), 0.12, "sine"), speed=18)
     snare = fade(noise(0.12, 3), speed=22)
@@ -175,21 +184,23 @@ def make_music():
         root = note(BASS[chord])
         for k in range(8):
             f = root * (2 if k % 2 else 1)
-            put(held(osc(f, STEP * 2 * 0.9, "triangle"), 0.02), start + k * 2 * STEP, 0.32)
+            put("base", held(osc(f, STEP * 2 * 0.9, "triangle"), 0.02), start + k * 2 * STEP, 0.32)
         # arpeggio: chord tones on 16ths, quiet in the background
         tones_ = [note(n + "4") for n in CHORDS[chord]] + [note(CHORDS[chord][0] + "5")]
         for k in range(16):
-            put(held(osc(tones_[k % 4], STEP * 0.8, duty=0.125), 0.01), start + k * STEP, 0.05)
+            put("beat", held(osc(tones_[k % 4], STEP * 0.8, duty=0.125), 0.01), start + k * STEP, 0.05)
         # drums
         for k in range(16):
             at = start + k * STEP
             if k in (0, 8) or (busy and k in (6, 10)):
-                put(kick, at, 0.5)
+                put("base", kick, at, 0.5)
+            elif k in (3, 11, 14):
+                put("lead", kick, at, 0.35)  # extra kicks push the top combo along
             if k in (4, 12):
-                put(snare, at, 0.2)
+                put("base", snare, at, 0.2)
             if k % 2 == 1 or busy:
-                put(hihat, at, 0.06)
-        # melody, with a touch of vibrato on long notes
+                put("beat", hihat, at, 0.06)
+        # melody, with a touch of vibrato on long notes; the lead doubles it an octave up, thin and quiet
         slots = melody.split()
         k = 0
         while k < 8:
@@ -202,13 +213,17 @@ def make_music():
             dur = n * 2 * STEP * 0.92
             t = np.arange(samples(dur)) / RATE
             vibrato = 1 + 0.006 * np.sin(2 * np.pi * 6 * t) * np.clip(t / 0.15 - 0.5, 0, 1)
-            put(held(osc(note(slots[k]) * vibrato, dur, duty=0.25), 0.04), start + k * 2 * STEP, 0.15)
+            put("melody", held(osc(note(slots[k]) * vibrato, dur, duty=0.25), 0.04), start + k * 2 * STEP, 0.15)
+            put("lead", held(osc(note(slots[k]) * 2 * vibrato, dur, duty=0.125), 0.04), start + k * 2 * STEP, 0.06)
             k += n
-    # wrap the ringing tail around to the start, so the loop is seamless
-    tail = track[length:]
-    track = track[:length]
-    track[:len(tail)] += tail
-    save("music", track, 0.8)
+    # wrap each ringing tail around to the start, so the loops are seamless
+    for name, track in tracks.items():
+        track[:len(track) - length] += track[length:]
+        tracks[name] = track[:length]
+    # one scale for all the layers (the loudest the full mix gets), so they keep their balance when stacked
+    scale = 0.8 / np.abs(sum(tracks.values())).max()
+    for name, track in tracks.items():
+        save(f"music_{name}", track * scale, None)
 
 
 if __name__ == "__main__":
