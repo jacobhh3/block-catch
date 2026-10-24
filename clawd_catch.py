@@ -1,11 +1,14 @@
 """Block Catch - hit the falling blocks before they reach the ground."""
 import asyncio
+import base64
 import colorsys
 import datetime
+import io
 import json
 import math
 import os
 import random
+import subprocess
 import sys
 import threading
 import urllib.parse
@@ -540,7 +543,9 @@ SETS = [
 ]
 assert all(h in _HAT_INDEX for _, hs, _, _, _ in SETS for h in hs)
 assert all(c in _SKIN_INDEX for _, _, cs, _, _ in SETS for c in cs)
-GALLERY_COLS, GALLERY_ROWS, GALLERY_CELL = 6, 5, 58  # the gallery's grid of hats or colors, a page at a time
+GALLERY_COLS, GALLERY_ROWS, GALLERY_CELL = 6, 5, 58
+CARD_W, CARD_H = 600, 320  # the score card image made for sharing
+SITE = "jacobhh3.github.io/block-catch"  # the gallery's grid of hats or colors, a page at a time
 JESTER_WINDOW = 3.0  # seconds after a shield pops that losing your last life earns the jester hat
 
 HEART = [".XX.XX.", "XXXXXXX", "XXXXXXX", ".XXXXX.", "..XXX..", "...X..."]
@@ -708,6 +713,18 @@ window.bc_update = function () {
     var files = ["block-catch.tar.gz", "block-catch.apk", "index.html", location.pathname];
     Promise.all(files.map(u => fetch(u, {cache: "reload"}).catch(() => 0))).then(() => location.reload());
 };
+window.bc_share = function (b64, text) {
+    var bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    var file = new File([bytes], "block-catch-score.png", {type: "image/png"});
+    if (navigator.canShare && navigator.canShare({files: [file]})) {
+        navigator.share({files: [file], text: text}).catch(() => 0);
+        return;
+    }
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(file);
+    a.download = file.name;
+    a.click();
+};
 window.bc_take = function (id) {
     var v = window.bc_net[id] || "";
     if (v) delete window.bc_net[id];
@@ -869,6 +886,19 @@ def make_hat(rows, color=None, px=PX):
             if ch != ".":
                 surf.fill(color or HAT_COLORS[ch], (c * px, r * px, px, px))
     return surf
+
+
+def copy_image(path):
+    """Windows: put a PNG on the clipboard, so it can be pasted into a chat. Best effort."""
+    if os.name != "nt":
+        return
+    script = ("Add-Type -AssemblyName System.Windows.Forms, System.Drawing; "
+              f"[System.Windows.Forms.Clipboard]::SetImage([System.Drawing.Image]::FromFile('{path.replace(chr(39), chr(39) * 2)}'))")
+    try:
+        subprocess.run(["powershell", "-NoProfile", "-STA", "-Command", script], timeout=15,
+                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), capture_output=True)
+    except (OSError, subprocess.SubprocessError):
+        pass
 
 
 def apply_moves(surf, moves):
@@ -1630,6 +1660,60 @@ class Game:
             self.skin = self.skin_viewing
             self.save_colors()
 
+    # ---------- score card ----------
+    def make_card(self):
+        """The picture that gets shared: Clawd as he was dressed, the score, and how the game went."""
+        card = pygame.Surface((CARD_W, CARD_H))
+        card.fill(NIGHT)
+        for x, y, size, _ in self.stars:
+            card.fill(DIM, (x * CARD_W // W, y * CARD_H // 420 // 2, size, size))
+        ground = CARD_H - 52
+        card.fill(EARTH, (0, ground, CARD_W, CARD_H - ground))
+        card.fill(DIM, (0, ground, CARD_W, 2))
+        me = self.dressed(self.skin, self.worn if self.worn in self.unlocked else -1, 0)
+        me = pygame.transform.scale(me, (me.get_width() * 3, me.get_height() * 3))
+        card.blit(me, me.get_rect(midbottom=(150, ground)))
+        x = 300
+        self.text("BLOCK", x, 40, 20, CLAWD, "left", surf=card)
+        self.text("CATCH", x + 112, 40, 20, INK, "left", surf=card)
+        self.text(str(self.score), x, 98, 46, GOLD, "left", surf=card)
+        self.text("POINTS" if self.score != 1 else "POINT", x + 4, 136, 11, DIM, "left", surf=card)
+        mins, secs = divmod(int(self.t), 60)
+        self.text(f"SURVIVED {mins}:{secs:02d}", x, 168, 11, INK, "left", surf=card)
+        self.text(f"BEST STREAK {self.game_counts.get('best_streak', 0)}", x, 188, 11, INK, "left", surf=card)
+        hat = self.worn if self.worn in self.unlocked else -1
+        if hat >= 0:
+            self.text(HATS[hat][0], x, 216, 10, HAT_TIER_COLOR[hat], "left", surf=card)
+        self.text(SKINS[self.skin][0], x, 234, 10, TIER_COLOR[self.skin], "left", surf=card)
+        st = self.worn_set()
+        if st:
+            self.text(f"{st[0]} SET", x, 252, 9, GOLD, "left", surf=card)
+        self.text(SITE, CARD_W / 2, CARD_H - 24, 11, INK, surf=card)
+        return card
+
+    def share_card(self):
+        """Phone: the share sheet (or a download). PC: copied to the clipboard and saved in Pictures."""
+        card = self.make_card()
+        text = f"I scored {self.score} in Block Catch! https://{SITE}/"
+        if WEB:
+            try:
+                data = io.BytesIO()
+                pygame.image.save(card, data, "card.png")
+                platform.window.bc_share(base64.b64encode(data.getvalue()).decode(), text)
+            except Exception:
+                self.notice = dict(txt="COULD NOT SHARE", life=1.6)
+            return
+        folder = os.path.join(os.path.expanduser("~"), "Pictures", "Block Catch")
+        path = os.path.join(folder, datetime.datetime.now().strftime("block-catch-%Y%m%d-%H%M%S.png"))
+        try:
+            os.makedirs(folder, exist_ok=True)
+            pygame.image.save(card, path)
+        except (OSError, pygame.error):
+            self.notice = dict(txt="COULD NOT SAVE THE CARD", life=1.6)
+            return
+        self.notice = dict(txt="CARD COPIED + SAVED TO PICTURES", life=2.2)
+        threading.Thread(target=copy_image, args=(path,), daemon=True).start()
+
     # ---------- sets ----------
     def worn_set(self):
         """The set Clawd is wearing right now (a hat and color that belong together), or None."""
@@ -1894,6 +1978,7 @@ class Game:
         """Score a destroyed block: combo multiplier, air chain bonus, and pickup drops."""
         b["dead"] = True
         self.streak += 1
+        self.game_counts["best_streak"] = max(self.game_counts.get("best_streak", 0), self.streak)
         if self.p["dash"] > 0:
             self.count("dash_hits")
         if self.streak == COMBO_STEP * (MAX_MULT - 1):
@@ -3101,12 +3186,13 @@ class Game:
                 self.text(f"{self.score} POINT{'' if self.score == 1 else 'S'}", W / 2, 110, 18, INK)
                 self.draw_table(150)
                 if TOUCH:
-                    self.button("MENU", W / 2 - 76, 432, 140, 34, lambda: self.reset("title"), 12, DIM)
-                    self.button("PLAY AGAIN", W / 2 + 76, 432, 140, 34, self.start, 12, CLAWD)
+                    self.button("MENU", W / 2 - 126, 432, 116, 34, lambda: self.reset("title"), 12, DIM)
+                    self.button("SHARE", W / 2, 432, 116, 34, self.share_card, 12, GOLD)
+                    self.button("PLAY AGAIN", W / 2 + 126, 432, 116, 34, self.start, 12, CLAWD)
                 else:
                     if blink_on:
                         self.text("SPACE TO PLAY AGAIN", W / 2, 420, 13, DIM)
-                    self.text("ESC  MAIN MENU", W / 2, 440, 10, DIM)
+                    self.text("ESC  MAIN MENU    C  SHARE SCORE CARD", W / 2, 440, 10, DIM)
 
         if TOUCH and self.mode != "entry":
             if self.mode == "play":
@@ -3202,6 +3288,9 @@ class Game:
                         continue
                     if e.key == pygame.K_s and self.mode == "title":
                         self.mode = "stats"
+                        continue
+                    if e.key == pygame.K_c and self.mode == "over":
+                        self.share_card()
                         continue
                     if e.key == pygame.K_ESCAPE and self.mode == "over":
                         self.reset("title")
