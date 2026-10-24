@@ -290,20 +290,22 @@ _SAMURAI = ["Y...........Y", ".Y.........Y.", "..Y...w...Y..", "...YrrYrrY...", 
 _CLOUD = ["....sSSs.....", "..sSSSSSSSs..", ".sSSSSSSSSSs.", ".zzzzzzzzzzz."]
 _RAIN = [["..l...l...l..", "....l...l...."], ["....l...l....", "..l...l...l.."]]
 _VALKYRIE = ["W...........W", "WW.........WW", ".WW.SSSSS.WW.", "..WSSSSSSSW..", "..SsSsSsSsS..", "..sssssssss.."]
-_JELLYFISH = ["....LLLLL....", "..LLwLLLLLL..", ".LLLLLLLLLLL.", ".PPPPPPPPPPP.", "...p..p...p..",
-              "....p..p...p.", "...p..p...p.."]
-_HEART_SMALL = [".............", ".............", "....RR.RR....", "...RLRRRRR...", "...RRRRRRR...", "....RRRRR....",
-                ".....RRR.....", "......R......"]
-_HEART_BIG = ["...RRR.RRR...", "..RLLRRRRRR..", "..RLRRRRRRR..", "..RRRRRRRRR..", "...RRRRRRR...", "....RRRRR....",
-              ".....RRR.....", "......R......"]
-_TESLA = [".............", ".....SSS.....", "....SwSSs....", ".....sss.....", "......Y......", ".....yYy.....",
-          "......Y......", ".....yYy.....", "...sssssss..."]
-_TESLA_ZAPS = [_with(_TESLA, (0, ".Y..........."), (1, "..YY.SSS....."), (2, "....SwSSs.YY."), (3, ".....sss...Y.")),
-               _with(_TESLA, (0, "...........Y."), (1, ".....SSS.YY.."), (2, ".YY.SwSSs...."), (3, ".Y...sss....."))]
-_MAGNET = ["....RRRBB....", "...RRRRBBB...", "..RRR...BBB..", "..RR.....BB..", "..RR.....BB..", "..SS.....SS..",
-           "..SS.....SS.."]
-_SHIELD = ["...lllllll...", "...lWlllll...", "...lWlllll...", "...lWlllll...", "....lllll....", ".....lll.....",
-           "......l......", "............."]
+_DEMOLITION = [".....OOO.....", ".....OOO.....", "....YYYYY....", "...YYwYYYY...", "..YYYYYYYYY..",
+               "yyyyyyyyyyyyy"]
+_HEART_CROWN = ["....RR.RR....", "....RLRRR....", "..Y..RRR..Y..", "..YY..R..YY..", "..YYYYYYYYY..",
+                "..yLyyRyyLy.."]
+_HEART_CROWN_BIG = ["...RRR.RRR...", "...RLRRRRR...", "..YRRRRRRRY..", "..YY.RRR.YY..", "..YYYYRYYYY..",
+                    "..yLyyRyyLy.."]
+_LIGHTNING_CROWN = ["...Y...Y...Y.", "..YY..YY..YY.", "..Y...Y...Y..", "..zzzzzzzzz..", "..zYzzYzzYz.."]
+_SCRAP_CROWN = ["..s...S...s..", "..S..sSs..S..", "..RRRRBBBBB..", "..RRRRBBBBB..", "..rrrrbbbbb.."]
+_SHIELD_CROWN = [".lll.lll.lll.", ".lWl.lWl.lWl.", "..l...l...l..", "..SSSSSSSSS..", "..sSsSsSsSs.."]
+
+
+def _bright(rows, cols, a, b):
+    """Rows with color a turned into b, only in the given columns (to light up one point of a crown)."""
+    return ["".join(b if ch == a and c in cols else ch for c, ch in enumerate(row)) for row in rows]
+
+
 _PHARAOH = [".....YYY.....", "...YYYwYYY...", "..BBBBBBBBB..", ".YYYYYYYYYYY.", ".BB.......BB.", ".YY.......YY.",
             ".BB.......BB.", ".YY.......YY."]
 
@@ -383,12 +385,12 @@ HATS = [
     ("STORM CLOUD", "zapped5000", _CLOUD + _RAIN[0]),
     ("VALKYRIE HELM", "walljumps5000", _VALKYRIE),
     ("DISCO BALL", "days30", _disco(0)),
-    ("JELLYFISH", "blocks25000", _JELLYFISH),
+    ("DEMOLITION HAT", "blocks25000", _DEMOLITION),
     ("PHARAOH", "golds500", _PHARAOH),
-    ("HEARTBEAT", "hearts2000", _HEART_SMALL),
-    ("TESLA COIL", "bolts2000", _TESLA),
-    ("HORSESHOE MAGNET", "magnets2000", _MAGNET),
-    ("SHIELD CREST", "shields250", _SHIELD),
+    ("HEART CROWN", "hearts2000", _HEART_CROWN),
+    ("LIGHTNING CROWN", "bolts2000", _LIGHTNING_CROWN),
+    ("SCRAP CROWN", "magnets2000", _SCRAP_CROWN),
+    ("SHIELD CROWN", "shields250", _SHIELD_CROWN),
 ]
 # animated hats: (frames per second, frames). The propeller only spins while he's in the air.
 HAT_ANIM = {
@@ -413,20 +415,24 @@ HAT_ANIM = {
                           [".............", "W...........W", "WW..SSSSS..WW", ".WWSSSSSSSWW.", "..SsSsSsSsS..",
                            "..sssssssss.."]]),  # wings flapping
     "DISCO BALL": (6, [_disco(k) for k in range(12)]),
-    "JELLYFISH": (4, [_JELLYFISH, _with(_JELLYFISH, (5, "..p..p...p..."))]),  # tentacles waving
-    "HEARTBEAT": (8, [_HEART_SMALL, _HEART_BIG, _HEART_SMALL, _HEART_BIG] + [_HEART_SMALL] * 4),  # lub-dub, pause
-    "TESLA COIL": (10, [_TESLA, _TESLA_ZAPS[0], _TESLA, _TESLA_ZAPS[1], _TESLA_ZAPS[0], _TESLA]),
-    "HORSESHOE MAGNET": (6, [_with(_MAGNET, (3, row)) for row in ("..RR.w...BB..", "..RR..w..BB..", "..RR...w.BB..")]),
-    "SHIELD CREST": (3, [_SHIELD, [row.replace("l", "B") for row in _SHIELD]]),  # pulsing
+    "DEMOLITION HAT": (8, [_DEMOLITION, _with(_DEMOLITION, (0, "..w..wOO..w.."), (1, ".....wOO.....")),
+                           _with(_DEMOLITION, (0, ".....OwO....."), (1, ".....OwO.....")),
+                           _with(_DEMOLITION, (0, ".....OOw....."), (1, ".....OOw....."))]),  # warning light
+    "HEART CROWN": (8, [_HEART_CROWN, _HEART_CROWN_BIG] * 2 + [_HEART_CROWN] * 4),  # lub-dub, pause
+    "LIGHTNING CROWN": (6, [_bright(_LIGHTNING_CROWN, range(c, c + 3), "Y", "w") for c in (2, 6, 10)]
+                        + [_LIGHTNING_CROWN, [r.replace("Y", "w") for r in _LIGHTNING_CROWN], _LIGHTNING_CROWN]),
+    "SCRAP CROWN": (5, [_SCRAP_CROWN, [".....sSs.....", "..s...S...s.."] + _SCRAP_CROWN[2:]]),  # bits jiggling
+    "SHIELD CROWN": (3, [_bright(_SHIELD_CROWN, range(c, c + 3), "l", "B") for c in (1, 5, 9)]),
     "PHARAOH": (3, [_PHARAOH, [row.translate(str.maketrans("YB", "BY")) for row in _PHARAOH]]),
 }
 HAT_AIR_ONLY = {"PROPELLER CAP"}
-HAT_BOB = {"UFO": 5, "STORM CLOUD": 3, "DISCO BALL": 3, "SHIELD CREST": 3}  # floating hats drift up and down this many pixels
+HAT_BOB = {"UFO": 5, "STORM CLOUD": 3, "DISCO BALL": 3}  # floating hats drift up and down this many pixels
 # hats that hang down over Clawd's head (rows below the top of his head), like a mask over his eyes
 HAT_DROP = {"WELDING MASK": 5, "USHANKA": 3, "SPACE HELMET": 5, "KNIGHT HELMET": 5, "PIRATE HAT": 4,
             "HEADPHONES": 3, "NINJA BAND": 3, "VIKING HELMET": 2, "KING'S CROWN": 1, "DRAGON HELM": 5,
             "SAMURAI HELMET": 2, "SUNGLASSES": 4, "BOW": 1, "FEZ": 1,
-            "VALKYRIE HELM": 1, "PHARAOH": 4, "JELLYFISH": 3, "HORSESHOE MAGNET": 1}
+            "VALKYRIE HELM": 1, "PHARAOH": 4, "DEMOLITION HAT": 1, "HEART CROWN": 1,
+            "LIGHTNING CROWN": 1, "SCRAP CROWN": 1, "SHIELD CROWN": 1}
 # brimmed hats sit one row down, resting on his head
 HAT_DROP.update({n: 1 for n in ["BALL CAP", "COWBOY HAT", "TOP HAT", "ARMY HELMET", "CHEF HAT", "BEANIE", "HARD HAT",
                                 "FIREFIGHTER", "SOMBRERO", "FLOWER CROWN", "GRAD CAP", "SANTA HAT", "WITCH HAT",
@@ -499,8 +505,8 @@ HAT_TIERS = [
     ((240, 110, 90), ["PIRATE HAT", "HARD HAT", "FLOWER CROWN", "ROBOT ANTENNA", "MUSHROOM CAP", "WELDING MASK",
                       "CAT EARS", "GRAD CAP", "SOMBRERO", "PROPELLER CAP", "HALO", "JESTER HAT"]),
     ((200, 140, 255), ["ARMY HELMET", "SPACE HELMET", "KING'S CROWN", "DRAGON HELM", "UFO", "FLAME CROWN",
-                       "SAMURAI HELMET", "STORM CLOUD", "VALKYRIE HELM", "DISCO BALL", "JELLYFISH", "PHARAOH",
-                       "HEARTBEAT", "TESLA COIL", "HORSESHOE MAGNET", "SHIELD CREST"]),
+                       "SAMURAI HELMET", "STORM CLOUD", "VALKYRIE HELM", "DISCO BALL", "DEMOLITION HAT", "PHARAOH",
+                       "HEART CROWN", "LIGHTNING CROWN", "SCRAP CROWN", "SHIELD CROWN"]),
 ]
 _HAT_INDEX = {h[0]: i for i, h in enumerate(HATS)}
 HAT_ORDER = [_HAT_INDEX[name] for _, names in HAT_TIERS for name in names]
