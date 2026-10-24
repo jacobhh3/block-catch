@@ -513,9 +513,9 @@ HAT_TIERS = [
                       "CAPTAIN HAT", "SANTA HAT", "WITCH HAT", "FIREFIGHTER"]),
     ((240, 110, 90), ["PIRATE HAT", "HARD HAT", "FLOWER CROWN", "ROBOT ANTENNA", "MUSHROOM CAP", "WELDING MASK",
                       "CAT EARS", "GRAD CAP", "SOMBRERO", "PROPELLER CAP", "HALO", "JESTER HAT"]),
-    ((200, 140, 255), ["ARMY HELMET", "SPACE HELMET", "KING'S CROWN", "DRAGON HELM", "UFO", "FLAME CROWN",
-                       "SAMURAI HELMET", "STORM CLOUD", "VALKYRIE HELM", "DISCO BALL", "DEMOLITION HAT", "PHARAOH",
-                       "HEART CROWN", "LIGHTNING CROWN", "SCRAP CROWN", "SHIELD CROWN"]),
+    ((200, 140, 255), ["ARMY HELMET", "SPACE HELMET", "DRAGON HELM", "UFO", "FLAME CROWN", "SAMURAI HELMET",
+                       "STORM CLOUD", "VALKYRIE HELM", "DISCO BALL", "DEMOLITION HAT", "PHARAOH", "HEART CROWN",
+                       "LIGHTNING CROWN", "SCRAP CROWN", "SHIELD CROWN", "KING'S CROWN"]),  # king's crown last: it needs every other hat
 ]
 _HAT_INDEX = {h[0]: i for i, h in enumerate(HATS)}
 HAT_ORDER = [_HAT_INDEX[name] for _, names in HAT_TIERS for name in names]
