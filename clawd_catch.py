@@ -20,7 +20,9 @@ TOUCH = WEB or os.environ.get("BLOCKCATCH_TOUCH") == "1"  # on-screen buttons; t
 
 W, H, GROUND = 400, 560, 512
 PAD = 170 if TOUCH else 0  # height of the touch controls strip under the game
-PAD_KEYS = [("left", 10, 98), ("right", 114, 98), ("zap", 218, 70), ("jump", 294, 96)]  # touch buttons: left edge and width
+# touch buttons: left edge, top (down from the top of the strip), width, height. ZAP is a short bar above JUMP.
+PAD_KEYS = [("left", 10, 16, 98, 138), ("right", 114, 16, 98, 138), ("zap", 218, 16, 172, 38),
+            ("jump", 218, 60, 172, 94)]
 KEY_ROWS = ["1234567890", "QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"]  # on-screen keyboard for the name entry
 NIGHT = (27, 26, 36)
 PANEL = (36, 34, 47)
@@ -1099,7 +1101,7 @@ class Game:
         self.last_key = None  # online key of the score just entered, for highlighting
         self.pointers = {}  # touch fingers (and the mouse) currently down: id -> (x, y)
         self.buttons = []  # tappable menu buttons drawn this frame: (rect, action)
-        self.pad = {name: pygame.Rect(x, H + 16, w, PAD - 32) for name, x, w in PAD_KEYS}
+        self.pad = {name: pygame.Rect(x, H + y, w, h) for name, x, y, w, h in PAD_KEYS}
         self.build, self.update_ready, self.check_in = read_build(), False, 0.0
         self.stars = [((i * 97) % W, (i * 53) % 420, 2 if i % 3 == 0 else 1, i) for i in range(40)]
         self.reset("title")
@@ -2304,12 +2306,12 @@ class Game:
             if name in ("left", "right"):
                 d = -1 if name == "left" else 1
                 pygame.draw.polygon(s, col, [(cx - d * 14, cy - 22), (cx + d * 16, cy), (cx - d * 14, cy + 22)])
-            elif name == "zap":
+            elif name == "zap":  # a little bolt beside the label
                 for row_i, row in enumerate(BOLT):
                     for k, ch in enumerate(row):
                         if ch == "X":
-                            s.fill(col, (cx - 12 + k * 4, cy - 34 + row_i * 4, 4, 4))
-                self.text(f"ZAP x{self.charge}" if live and self.charge else "ZAP", cx, cy + 22, 12, col, surf=s)
+                            s.fill(col, (cx - 46 + k * 3, cy - 12 + row_i * 3, 3, 3))
+                self.text(f"ZAP x{self.charge}" if live and self.charge else "ZAP", cx + 10, cy, 12, col, surf=s)
             else:
                 pygame.draw.polygon(s, col, [(cx, cy - 32), (cx - 20, cy - 6), (cx + 20, cy - 6)])
                 self.text("JUMP", cx, cy + 22, 12, col, surf=s)
