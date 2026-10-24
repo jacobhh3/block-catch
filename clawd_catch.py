@@ -605,6 +605,8 @@ OLD_BEST_FILE = os.path.join(SAVE_DIR, "best.txt")
 HATS_FILE = os.path.join(SAVE_DIR, "hats.json")
 COLORS_FILE = os.path.join(SAVE_DIR, "colors.json")
 SETTINGS_FILE = os.path.join(SAVE_DIR, "settings.json")
+SYNC_FILE = os.path.join(SAVE_DIR, "sync.json")  # cross save: this device's code and what it has sent
+SYNC_CHARS = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"  # sync codes use these (no 0/O or 1/I/L to mix up)
 SITE_URL = "https://jacobhh3.github.io/block-catch/"
 VERSION_CHECK = 300  # seconds between checks for a newer build on the website
 SOUND_MODES = ["ON", "EFFECTS ONLY", "OFF"]  # M key / speaker button cycles through these
@@ -619,7 +621,7 @@ NAME_LEN = 10
 
 # Shared online leaderboard (dreamlo.com), reached through a small Cloudflare relay (see relay/) because
 # dreamlo's free tier is HTTP only and browsers refuse that. The relay holds dreamlo's private code.
-LB_URL = "https://block-catch-lb.jacobhh3.workers.dev/"
+LB_URL = os.environ.get("BLOCKCATCH_RELAY") or "https://block-catch-lb.jacobhh3.workers.dev/"  # env var: test relay
 
 
 def skin_number(text):
@@ -725,6 +727,12 @@ window.bc_share = function (b64, text) {
     a.download = file.name;
     a.click();
 };
+window.bc_post = function (id, url, body) {
+    window.bc_net[id] = "";
+    fetch(url, {method: "POST", body: body, cache: "no-store"})
+        .then(r => r.text().then(t => { window.bc_net[id] = (r.ok ? "1" : "0" + r.status + " ") + t; }))
+        .catch(e => { window.bc_net[id] = "0" + e; });
+};
 window.bc_take = function (id) {
     var v = window.bc_net[id] || "";
     if (v) delete window.bc_net[id];
@@ -741,6 +749,7 @@ class Leaderboard:
         self.lock = threading.Lock()
         self.status = "connecting"  # connecting | online | offline
         self.scores, self.pending, self.name, self.player_id = [], [], "", ""
+        self.weekly = []  # this week's best, one per player (from the relay; empty until it answers)
         self.syncing, self.again, self.requests = False, False, 0
         if WEB:
             platform.window.eval(WEB_FETCH_JS)
@@ -771,9 +780,9 @@ class Leaderboard:
         except OSError:
             pass
 
-    def snapshot(self):
+    def snapshot(self, weekly=False):
         with self.lock:
-            return list(self.scores)
+            return list(self.weekly if weekly else self.scores)
 
     def key_for(self, name):
         return f"{name}_{self.player_id}"
@@ -824,14 +833,19 @@ class Leaderboard:
         finally:
             self.syncing = False
 
-    async def _get(self, url):
+    async def _get(self, url, body=None):
+        """Fetches url (a POST with body, when given) and returns the reply's text. Raises OSError on failure."""
         if not WEB:
-            req = urllib.request.Request(url, headers={"User-Agent": "ClawdCatch"})
+            req = urllib.request.Request(url, data=body.encode() if body is not None else None,
+                                         headers={"User-Agent": "ClawdCatch", "Content-Type": "text/plain"})
             with urllib.request.urlopen(req, timeout=8) as r:
                 return r.read().decode("utf-8", "replace")
         self.requests += 1
         rid = str(self.requests)
-        platform.window.bc_get(rid, url)
+        if body is not None:
+            platform.window.bc_post(rid, url, body)
+        else:
+            platform.window.bc_get(rid, url)
         for _ in range(160):  # about 8 seconds
             reply = str(platform.window.bc_take(rid) or "")
             if reply:
@@ -870,6 +884,14 @@ class Leaderboard:
                                     skin=p.get("skin")))
                 self.status = "online"
                 self.save()
+            try:  # this week's board (a relay from before weekly boards doesn't have one)
+                week = json.loads(await self._get(f"{LB_URL}week/{LB_FETCH}"))
+                rows = [dict(key=r["name"], name=display_name(r["name"]), score=int(r["score"]),
+                             skin=skin_number(r.get("skin"))) for r in week.get("entries", [])]
+                with self.lock:
+                    self.weekly = best_per_player(rows)
+            except (OSError, ValueError, KeyError, TypeError, AttributeError):
+                pass
         except Exception:
             with self.lock:
                 self.status = "offline"
@@ -1092,6 +1114,15 @@ class Game:
                            make_clawd(0, False, skin, px=3) for _, skin, _ in SKINS]
         self.skins, self.skin = {0}, 0  # unlocked color indexes, and the one Clawd wears
         self.gallery, self.gallery_icons = dict(tab="hats", pick=0), {}  # the gallery screen, and its little pictures
+        self.board_tab = "all"  # scores screen: all time or this week
+        # cross save: code (empty if not linked), this device's id, the last update number, the totals the save
+        # had at the last sync (base), and an update sent but not yet answered (inflight), resent until it is
+        self.sync = dict(code="", device=os.urandom(4).hex(), req=0, base={}, inflight=None)
+        try:
+            self.sync.update({k: v for k, v in load_save(SYNC_FILE).items() if k in self.sync})
+        except (OSError, ValueError, AttributeError, TypeError):
+            pass
+        self.sync_busy, self.sync_reply, self.sync_status, self.code_typed = False, None, "", ""
         self.zaps = self.landings = 0  # progress toward the colors that count over all games
         try:
             data = load_save(COLORS_FILE)
@@ -1171,6 +1202,8 @@ class Game:
         self.build, self.update_ready, self.check_in = read_build(), False, 0.0
         self.stars = [((i * 97) % W, (i * 53) % 420, 2 if i % 3 == 0 else 1, i) for i in range(40)]
         self.reset("title")
+        if self.sync["code"]:
+            self.sync_now()
 
     def font(self, size):
         if size not in self.fonts:
@@ -1204,6 +1237,8 @@ class Game:
         self.hat_stats["best_score"] = max(self.hat_stats["best_score"], self.score)
         self.hat_stats["total_score"] += self.score
         self.save_progress()
+        if self.sync["code"]:
+            self.sync_now()
         self.last_key = None
         self.play("gameover")
         if self.qualifies():
@@ -1293,6 +1328,9 @@ class Game:
         self.save_progress()
         self.reset("title")
 
+    def board_tab_to(self, tab):
+        self.board_tab = tab
+
     def show_board(self):
         self.last_key = None
         self.board.refresh()
@@ -1303,10 +1341,23 @@ class Game:
         return lambda: setattr(self, "mode", mode)
 
     def type_letter(self, ch):
-        self.name = (self.name + ch)[:NAME_LEN]
+        if self.mode == "synccode":
+            if ch in SYNC_CHARS:
+                self.code_typed = (self.code_typed + ch)[:8]
+        else:
+            self.name = (self.name + ch)[:NAME_LEN]
 
     def erase_letter(self):
-        self.name = self.name[:-1]
+        if self.mode == "synccode":
+            self.code_typed = self.code_typed[:-1]
+        else:
+            self.name = self.name[:-1]
+
+    def keyboard_ok(self):
+        if self.mode == "synccode":
+            self.submit_code()
+        else:
+            self.submit_name()
 
     # ---------- updates ----------
     def check_version(self):
@@ -1659,6 +1710,160 @@ class Game:
         if self.skin_viewing in self.skins:
             self.skin = self.skin_viewing
             self.save_colors()
+
+    # ---------- cross save ----------
+    def save_sync(self):
+        try:
+            write_save(SYNC_FILE, self.sync)
+        except OSError:
+            pass
+
+    def progress_totals(self):
+        """The counts that add up across devices: every all-games total, and the bolts and landings."""
+        totals = {k: float(v) for k, v in self.hat_stats.items() if isinstance(v, (int, float)) and k != "best_score"}
+        totals["zaps"], totals["landings"] = float(self.zaps), float(self.landings)
+        return totals
+
+    def set_total(self, key, value):
+        if key == "zaps":
+            self.zaps = int(value)
+        elif key == "landings":
+            self.landings = int(value)
+        elif key in self.hat_stats and key != "days":
+            self.hat_stats[key] = value
+
+    def sync_now(self, code=None, fresh=False):
+        """Cross save: send what this device gained since it last synced, then take in the combined save.
+        code: join that save; fresh: start a new one; neither: this device's own code."""
+        s = self.sync
+        target = "" if fresh else (code or s["code"])
+        if self.sync_busy or not (target or fresh):
+            return
+        if fresh or code:  # a different save: everything this device has is new to it
+            s["base"], s["inflight"] = {}, None
+        if s["inflight"] is None:
+            now = self.progress_totals()
+            s["req"] += 1
+            s["inflight"] = dict(req=s["req"], sent=now,
+                                 add={k: v - s["base"].get(k, 0) for k, v in now.items() if v > s["base"].get(k, 0)})
+            self.save_sync()
+        update = dict(device=s["device"], req=s["inflight"]["req"], add=s["inflight"]["add"],
+                      max=dict(best_score=self.hat_stats["best_score"]),
+                      union=dict(hats=sorted(self.unlocked), colors=sorted(self.skins), days=list(self.hat_stats["days"])),
+                      player_id=self.board.player_id, name=self.board.name)
+        url, body, joining = f"{LB_URL}sync" + (f"/{target}" if target else ""), json.dumps(update), bool(code)
+        self.sync_busy, self.sync_status = True, "SYNCING..."
+
+        async def send():
+            try:
+                self.sync_reply = ("ok", json.loads(await self.board._get(url, body)), joining)
+            except Exception as e:  # applied on the main loop, by finish_sync
+                self.sync_reply = ("error", str(e), joining)
+
+        if WEB:
+            asyncio.ensure_future(send())
+        else:
+            threading.Thread(target=lambda: asyncio.run(send()), daemon=True).start()
+
+    def finish_sync(self):
+        """The combined save came back: take its totals (plus anything played while it was on its way), unlocks,
+        best score and player id, so every linked device shows the same progress."""
+        result, data, joining = self.sync_reply
+        self.sync_reply, self.sync_busy = None, False
+        s = self.sync
+        if result != "ok" or not isinstance(data, dict):
+            self.sync_status = "NO SAVE WITH THAT CODE" if joining and "404" in str(data) else "COULDN'T SYNC  TRY AGAIN LATER"
+            if joining:
+                s["inflight"] = None
+            return
+        totals, sent, now = data.get("add") or {}, s["inflight"]["sent"], self.progress_totals()
+        for k, v in totals.items():
+            if k in now:
+                self.set_total(k, v + now[k] - sent.get(k, 0))
+        s["base"] = {k: float(v) for k, v in totals.items()}
+        s["inflight"], s["code"] = None, str(data.get("code") or s["code"])
+        self.hat_stats["best_score"] = max(self.hat_stats["best_score"], float((data.get("max") or {}).get("best_score", 0)))
+        union = data.get("union") or {}
+        self.unlocked |= {i for i in union.get("hats", []) if isinstance(i, int) and 0 <= i < len(HATS)}
+        self.skins |= {i for i in union.get("colors", []) if isinstance(i, int) and 0 <= i < len(SKINS)}
+        self.hat_stats["days"] = sorted(set(self.hat_stats["days"]) | {d for d in union.get("days", []) if isinstance(d, str)})
+        if isinstance(data.get("player_id"), str) and data["player_id"] and data["player_id"] != self.board.player_id:
+            self.board.player_id = data["player_id"]  # one player on the leaderboard, whichever device they use
+            self.board.save()
+        self.sync_status = "SYNCED " + datetime.datetime.now().strftime("%I:%M %p").lstrip("0")
+        self.save_sync()
+        self.save_progress()
+        self.check_hats()
+
+    def unlink(self):
+        self.sync["code"], self.sync["inflight"] = "", None
+        self.save_sync()
+        self.sync_status = "UNLINKED  PROGRESS STAYS ON THIS DEVICE"
+
+    def open_sync(self):
+        self.mode, self.sync_status = "sync", self.sync_status if self.sync_busy else ""
+
+    def enter_code(self):
+        self.mode, self.code_typed = "synccode", ""
+        pygame.key.start_text_input()
+
+    def submit_code(self):
+        if len(self.code_typed) != 8:
+            return
+        pygame.key.stop_text_input()
+        self.mode = "sync"
+        self.sync_now(code=self.code_typed)
+
+    def sync_key(self, key):
+        linked = bool(self.sync["code"])
+        if key == pygame.K_ESCAPE:
+            self.mode = "stats"
+        elif linked and key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
+            self.sync_now()
+        elif linked and key == pygame.K_u:
+            self.unlink()
+        elif not linked and key == pygame.K_n:
+            self.sync_now(fresh=True)
+        elif not linked and key == pygame.K_j:
+            self.enter_code()
+
+    def draw_sync(self, blink_on):
+        c = self.canvas
+        c.fill(NIGHT, (0, 0, W, H))
+        self.text("CROSS SAVE", W / 2, 60, 20, GOLD)
+        code = self.sync["code"]
+        if self.mode == "synccode":
+            self.text("TYPE THE CODE FROM YOUR OTHER DEVICE", W / 2, 140, 10, DIM)
+            shown = (self.code_typed + ("_" if blink_on and len(self.code_typed) < 8 else " ")).ljust(8)
+            box = pygame.Rect(W / 2 - 120, 164, 240, 44)
+            pygame.draw.rect(c, CLAWD, box, 2)
+            self.text(f"{shown[:4]}-{shown[4:8]}", W / 2, 186, 22, INK)
+            self.text("TAP OK TO LINK" if TOUCH else "ENTER TO LINK   ESC TO GO BACK", W / 2, 236, 10, DIM)
+            if TOUCH:
+                self.button("BACK", W / 2, 300, 140, 32, self.open_sync, 12, DIM)
+            return
+        if code:
+            self.text("THIS SAVE'S CODE", W / 2, 116, 10, DIM)
+            self.text(f"{code[:4]}-{code[4:]}", W / 2, 152, 30, INK)
+            self.text("ENTER IT ON YOUR OTHER DEVICES.", W / 2, 192, 10, DIM)
+            self.text("UNLOCKS AND PROGRESS ADD UP ACROSS ALL OF THEM.", W / 2, 210, 9, DIM)
+        else:
+            self.text("PLAY ON MORE THAN ONE DEVICE?", W / 2, 120, 12, INK)
+            self.text("LINK THEM WITH A CODE: HATS, COLORS AND", W / 2, 150, 9, DIM)
+            self.text("PROGRESS ADD UP, ON PC AND PHONE ALIKE.", W / 2, 166, 9, DIM)
+        self.text(self.sync_status, W / 2, 244, 10, GOLD if self.sync_status.startswith("SYNCED") else DIM)
+        if TOUCH:
+            if code:
+                self.button("SYNC NOW", W / 2, 296, 200, 36, self.sync_now, 12, CLAWD)
+                self.button("UNLINK", W / 2, 342, 200, 32, self.unlink, 11, DIM)
+            else:
+                self.button("MAKE A CODE", W / 2, 296, 200, 36, lambda: self.sync_now(fresh=True), 12, CLAWD)
+                self.button("I HAVE A CODE", W / 2, 342, 200, 32, self.enter_code, 11, INK)
+            self.button("BACK", W / 2, 470, 140, 32, self.go("stats"), 12, DIM)
+        else:
+            hint = "ENTER  SYNC NOW    U  UNLINK" if code else "N  MAKE A CODE    J  I HAVE A CODE"
+            self.text(hint, W / 2, 300, 10, INK)
+            self.text("ESC  BACK", W / 2, 324, 10, DIM)
 
     # ---------- score card ----------
     def make_card(self):
@@ -2201,6 +2406,8 @@ class Game:
             self.pops.append(dict(x=W / 2, y=140, life=1.0, txt="ZAP!", c=BOLT_COLOR))
 
     def update(self, dt, controls):
+        if self.sync_reply:
+            self.finish_sync()
         self.swing_sprout(dt)
         if self.mode in ("play", "title"):
             self.set_trail(dt)
@@ -2605,7 +2812,7 @@ class Game:
         """The touch controls under the game, or a keyboard while typing a name."""
         s = self.screen
         s.fill(NIGHT, (0, H, W, PAD))
-        if self.mode == "entry":
+        if self.mode in ("entry", "synccode"):
             pitch = 39
             for i, row in enumerate(KEY_ROWS):
                 x0 = (W - (10 if i == 3 else len(row)) * pitch) / 2 + 1.5
@@ -2615,7 +2822,7 @@ class Game:
             wide = pitch * 1.5 - 3
             x = x0 + 7 * pitch + wide / 2
             self.button("DEL", x, y, wide, 36, self.erase_letter, 11, DIM, surf=s)
-            self.button("OK", x + pitch * 1.5, y, wide, 36, self.submit_name, 13, CLAWD, surf=s)
+            self.button("OK", x + pitch * 1.5, y, wide, 36, self.keyboard_ok, 13, CLAWD, surf=s)
             return
         held, live = self.held(), self.mode == "play"
         for name, r in self.pad.items():
@@ -2652,16 +2859,18 @@ class Game:
                 if ch == "X":
                     self.canvas.fill(color, (x + k * size, y + r * size, size, size))
 
-    def draw_table(self, top):
-        self.text("HIGH SCORES", W / 2, top, 18, GOLD)
+    def draw_table(self, top, weekly=False):
+        self.text("THIS WEEK" if weekly else "HIGH SCORES", W / 2, top, 18, GOLD)
         status = {"online": ("ONLINE  EVERYONE'S SCORES", (111, 183, 168)),
                   "offline": ("OFFLINE  SHOWING SAVED LIST", DIM),
                   "connecting": ("CONNECTING...", DIM)}[self.board.status]
+        if weekly and self.board.status == "online":
+            status = ("RESETS MONDAY 12AM EASTERN", (111, 183, 168))
         self.text(status[0], W / 2, top + 20, 9, status[1])
         top += 14
-        scores = self.scores
+        scores = self.board.snapshot(weekly)[:10] if weekly else self.scores
         if not scores:
-            self.text("no scores yet", W / 2, top + 40, 12, DIM)
+            self.text("no scores this week yet" if weekly else "no scores yet", W / 2, top + 40, 12, DIM)
             return
         for i, s in enumerate(scores):
             y = top + 32 + i * 22
@@ -3129,15 +3338,25 @@ class Game:
                     self.text("SPACE TO PLAY   ESC TO GO BACK", W / 2, 446, 11, DIM)
             elif self.mode == "gallery":
                 self.draw_gallery(now)
+            elif self.mode in ("sync", "synccode"):
+                self.draw_sync(blink_on)
             elif self.mode == "stats":
                 self.draw_stats()
                 if TOUCH:
+                    self.button("CROSS SAVE", W / 2, 432, 200, 30, self.open_sync, 11, GOLD)
                     self.button("BACK", W / 2 - 76, 476, 140, 34, self.go("title"), 12, DIM)
                     self.button("PLAY", W / 2 + 76, 476, 140, 34, self.start, 12, CLAWD)
-                elif blink_on:
-                    self.text("SPACE TO PLAY   ESC TO GO BACK", W / 2, 476, 11, DIM)
+                else:
+                    self.text("X  CROSS SAVE  (PLAY ON PC AND PHONE)", W / 2, 448, 10, GOLD)
+                    if blink_on:
+                        self.text("SPACE TO PLAY   ESC TO GO BACK", W / 2, 476, 11, DIM)
             elif self.mode == "board":
-                self.draw_table(110)
+                for k, (tab, label) in enumerate((("all", "ALL TIME"), ("week", "THIS WEEK"))):
+                    self.button(label, W / 2 + (k * 2 - 1) * 76, 72, 140, 26, lambda tab=tab: self.board_tab_to(tab), 10,
+                                INK if self.board_tab == tab else DIM)
+                self.draw_table(110, self.board_tab == "week")
+                if not TOUCH:
+                    self.text("TAB  ALL TIME / THIS WEEK", W / 2, 420, 9, DIM)
                 if TOUCH:
                     self.button("BACK", W / 2 - 76, 404, 140, 34, self.go("title"), 12, DIM)
                     self.button("PLAY", W / 2 + 76, 404, 140, 34, self.start, 12, CLAWD)
@@ -3250,6 +3469,19 @@ class Game:
                         elif e.type == pygame.MOUSEBUTTONUP and e.button == 1:
                             self.pointer("up", "mouse", e.pos)
                     continue
+                if self.mode == "synccode":
+                    if e.type == pygame.TEXTINPUT:
+                        typed = "".join(ch for ch in e.text.upper() if ch in SYNC_CHARS)
+                        self.code_typed = (self.code_typed + typed)[:8]
+                    elif e.type == pygame.KEYDOWN:
+                        if e.key == pygame.K_BACKSPACE:
+                            self.code_typed = self.code_typed[:-1]
+                        elif e.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                            self.submit_code()
+                        elif e.key == pygame.K_ESCAPE:
+                            pygame.key.stop_text_input()
+                            self.open_sync()
+                    continue
                 if self.mode == "entry":
                     if pygame.time.get_ticks() < self.entry_ready:
                         continue
@@ -3271,6 +3503,15 @@ class Game:
                         continue
                     if self.mode == "gallery":
                         self.gallery_key(e.key)
+                        continue
+                    if self.mode == "sync":
+                        self.sync_key(e.key)
+                        continue
+                    if e.key == pygame.K_x and self.mode == "stats":
+                        self.open_sync()
+                        continue
+                    if e.key == pygame.K_TAB and self.mode == "board":
+                        self.board_tab = "week" if self.board_tab == "all" else "all"
                         continue
                     if e.key == pygame.K_g and self.mode == "title":
                         self.open_gallery()
