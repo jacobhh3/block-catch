@@ -373,7 +373,7 @@ HATS = [
                                        "..ZDeDDDDDZ..", "..ZDDDDDDDZ..", "...ZZZZZZZ..."]),
     ("USHANKA", "walljumps200", ["....nNNNn....", "...NNNNNNN...", "..NNNNNNNNN..", ".TTTTTRTTTTT.", ".TTTRRRRRTTT.",
                             ".TTTTRTRTTTT.", ".NN.......NN.", ".nN.......Nn."]),
-    ("PIKMIN SPROUT", "sky_total", [".......EE....", "......EEje...", "......Ejee...", ".....EjEe....",
+    ("SPROUT", "sky_total", [".......EE....", "......EEje...", "......Ejee...", ".....EjEe....",
                                     ".....Eje.....", "......e......", "......e......", "......e......"]),
     ("KING'S CROWN", "allhats", _KINGS),
     ("DRAGON HELM", "score10000", _DRAGON),
@@ -427,6 +427,7 @@ HAT_ANIM = {
     "PHARAOH": (3, [_PHARAOH, [row.translate(str.maketrans("YB", "BY")) for row in _PHARAOH]]),
 }
 HAT_AIR_ONLY = {"PROPELLER CAP"}
+HAT_SPRING = {"SPROUT"}  # bends and wobbles as Clawd moves (see Game.swing_sprout)
 HAT_BOB = {"UFO": 5, "STORM CLOUD": 3, "DISCO BALL": 3}  # floating hats drift up and down this many pixels
 # hats that hang down over Clawd's head (rows below the top of his head), like a mask over his eyes
 HAT_DROP = {"WELDING MASK": 5, "USHANKA": 3, "SPACE HELMET": 5, "KNIGHT HELMET": 5, "PIRATE HAT": 4,
@@ -502,7 +503,7 @@ HAT_TIERS = [
     ((120, 210, 140), ["PARTY HAT", "BALL CAP", "COWBOY HAT", "TOP HAT"]),  # the original streak hats
     ((127, 200, 255), ["CROWN", "BEANIE", "CHEF HAT", "WIZARD HAT", "KNIGHT HELMET", "NINJA BAND", "SUNGLASSES", "BOW",
                        "FEZ"]),
-    ((232, 176, 75), ["VIKING HELMET", "DEVIL HORNS", "BUNNY EARS", "PIKMIN SPROUT", "USHANKA", "HEADPHONES",
+    ((232, 176, 75), ["VIKING HELMET", "DEVIL HORNS", "BUNNY EARS", "SPROUT", "USHANKA", "HEADPHONES",
                       "CAPTAIN HAT", "SANTA HAT", "WITCH HAT", "FIREFIGHTER"]),
     ((240, 110, 90), ["PIRATE HAT", "HARD HAT", "FLOWER CROWN", "ROBOT ANTENNA", "MUSHROOM CAP", "WELDING MASK",
                       "CAT EARS", "GRAD CAP", "SOMBRERO", "PROPELLER CAP", "HALO", "JESTER HAT"]),
@@ -842,6 +843,24 @@ def make_hat(rows, color=None, px=PX):
     return surf
 
 
+def apply_moves(surf, moves):
+    """Squash and spin a sprite: moves are ("scale", x, y) and ("rotate", degrees), done in order."""
+    for kind, *args in moves:
+        if kind == "scale":
+            surf = pygame.transform.scale(surf, (int(surf.get_width() * args[0]), int(surf.get_height() * args[1])))
+        else:
+            surf = pygame.transform.rotate(surf, args[0])
+    return surf
+
+
+def bend_hat(rows, bend):
+    """A hat's rows bent sideways like a stalk: the base stays put and the top moves bend pixels."""
+    pad = 5
+    top = len(rows) - 1 or 1
+    return ["." * pad + "." * s + row + "." * (pad - s) for row, s in
+            ((row, max(-pad, min(pad, round(bend * ((top - r) / top) ** 2)))) for r, row in enumerate(rows))]
+
+
 def hat_label(need):
     """What unlocks a hat, as the menu says it."""
     if isinstance(need, int):
@@ -1028,6 +1047,8 @@ class Game:
         self.hat_art = [[make_hat(f) for f in HAT_ANIM[name][1]] if name in HAT_ANIM else [make_hat(rows)]
                         for name, _, rows in HATS]
         self.hat_shadow = [[a.copy() for a in frames] for frames in self.hat_art]  # locked hats: full color, dimmed
+        self.sprout = dict(bend=0.0, speed=0.0, px=0.0, py=0.0, vx=0.0, vy=0.0)  # the sprout's springy stem
+        self.bent = {}  # bent sprout art, by (bend, locked)
         for frames in self.hat_shadow:
             for a in frames:
                 a.fill((150, 145, 160, 255), special_flags=pygame.BLEND_RGBA_MULT)
@@ -1354,11 +1375,32 @@ class Game:
     def hat_sprite(self, i, now):
         """Hat i as drawn right now: its animation frame."""
         name = HATS[i][0]
+        if name in HAT_SPRING:
+            key = (round(self.sprout["bend"]), i in self.unlocked)
+            if key not in self.bent:
+                self.bent[key] = make_hat(bend_hat(HATS[i][2], key[0]))
+                if not key[1]:
+                    self.bent[key].fill((150, 145, 160, 255), special_flags=pygame.BLEND_RGBA_MULT)
+            return self.bent[key]
         frames = self.hat_art[i] if i in self.unlocked else self.hat_shadow[i]
         k = 0
         if name in HAT_ANIM and (name not in HAT_AIR_ONLY or not self.p["on_ground"]):
             k = int(now * HAT_ANIM[name][0]) % len(frames)
         return frames[k]
+
+    def swing_sprout(self, dt):
+        """The sprout's stem is a spring: it lags behind when Clawd speeds up or stops, bounces when he lands
+        or jumps, then wobbles back upright. bend is how many pixels the leaf is pushed sideways."""
+        s, p = self.sprout, self.p
+        if dt <= 0:
+            return
+        vx, vy = (p["x"] - s["px"]) / dt, (p["y"] - s["py"]) / dt
+        ax = max(-8000.0, min(8000.0, (vx - s["vx"]) / dt))
+        ay = max(-8000.0, min(8000.0, (vy - s["vy"]) / dt))
+        s["px"], s["py"], s["vx"], s["vy"] = p["x"], p["y"], vx, vy
+        push = -ax * 0.15 + abs(ay) * 0.04 * (1 if s["bend"] >= 0 else -1)  # up and down jolts make it flop
+        s["speed"] += (push - 60 * s["bend"] - 5 * s["speed"]) * dt
+        s["bend"] = max(-4.0, min(4.0, s["bend"] + s["speed"] * dt))
 
     def save_hats(self):
         try:
@@ -1825,6 +1867,7 @@ class Game:
             self.pops.append(dict(x=W / 2, y=140, life=1.0, txt="ZAP!", c=BOLT_COLOR))
 
     def update(self, dt, controls):
+        self.swing_sprout(dt)
         for q in self.parts:
             q["life"] -= dt
             q["vy"] += q.get("g", 900) * dt  # flames have negative gravity and float up
@@ -2480,14 +2523,15 @@ class Game:
         if skin not in self.skins:
             sprite = sprite.copy()
             sprite.fill((150, 145, 160, 255), special_flags=pygame.BLEND_RGBA_MULT)  # locked: dimmed
+        plain, moves = sprite, []  # Clawd before he's squashed or spun, and each of those (the hat gets them too)
         squash = -0.05 if not p["on_ground"] and not sliding else 0
         if asleep:
             squash = 0.04 * math.sin(now / 700)  # slow breathing
         if squash:
-            sprite = pygame.transform.scale(sprite, (int(PW * (1 + squash)), int(PH * (1 - squash))))
+            moves.append(("scale", 1 + squash, 1 - squash))
         if p["bj_flip"] and p["bj_t"] < 0.45 and not p["on_ground"]:
             spin = -1 if p["vx"] >= 0 else 1  # flip toward where Clawd is heading
-            sprite = pygame.transform.rotate(sprite, spin * 360 * p["bj_t"] / 0.45)
+            moves.append(("rotate", spin * 360 * p["bj_t"] / 0.45))
         elif not p["bj_flip"] and p["bj_t"] < 0.31:
             # spring off the block: squash flat on impact, then stretch tall and settle
             if p["bj_t"] < 0.06:
@@ -2495,15 +2539,16 @@ class Game:
             else:
                 k = 1 - (p["bj_t"] - 0.06) / 0.25
                 sx, sy = 1 - 0.2 * k, 1 + 0.3 * k
-            sprite = pygame.transform.scale(sprite, (int(PW * sx), int(PH * sy)))
+            moves.append(("scale", sx, sy))
         if p["dance"] > 0:
-            sprite = pygame.transform.rotate(sprite, 12 if beat % 2 else -12)  # wiggle with the beat
+            moves.append(("rotate", 12 if beat % 2 else -12))  # wiggle with the beat
         if panic:
             sway, hop = random.choice((-1, 0, 1)), random.choice((-1, 0, 1))  # shaking
         elif sliding:
             # feet and arm braced on the wall, wobbling to keep balance
             lean = min(1.0, p["slide_t"] / 0.12) * (SLIDE_LEAN + 5 * math.sin(p["slide_t"] * 9))
-            sprite = pygame.transform.rotate(sprite, sliding * lean)
+            moves.append(("rotate", sliding * lean))
+        sprite = apply_moves(plain, moves)
         for gx, gy, life in self.ghosts:
             ghost = self.skin_sprite(self.skin, 0, False, now).copy()
             ghost.set_alpha(int(255 * life / 0.18 * 0.4))
@@ -2539,9 +2584,18 @@ class Game:
         clawd = [(sprite, body)]
         hat = self.viewing if self.mode == "title" else self.worn
         if hat >= 0:
+            # the hat goes on before he's squashed or spun, so it stays on his head through flips and wiggles.
+            # Padded the same above and below, so spinning the whole thing turns it around his middle.
             art, name = self.hat_sprite(hat, now), HATS[hat][0]
             bob = round(HAT_BOB.get(name, 0) * (1 + math.sin(now * 2.5)) / 2)
-            clawd.append((art, art.get_rect(midbottom=(body.centerx, body.top + HAT_DROP.get(name, 0) * PX - bob))))
+            hat_bottom = HAT_DROP.get(name, 0) * PX - bob  # from the top of his head
+            pad = max(0, art.get_height() - hat_bottom)
+            whole = pygame.Surface((max(PW, art.get_width()), PH + 2 * pad), pygame.SRCALPHA)
+            mid = whole.get_width() // 2
+            whole.blit(plain, plain.get_rect(midtop=(mid, pad)))
+            whole.blit(art, art.get_rect(midbottom=(mid, pad + hat_bottom)))
+            whole = apply_moves(whole, moves)
+            clawd = [(whole, whole.get_rect(center=body.center))]
         c.blits(clawd)
         if p["bomb_fx"] == "dizzy" and self.mode == "play":
             top = body.top - (10 if hat >= 0 else 0)
