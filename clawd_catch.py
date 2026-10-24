@@ -3163,7 +3163,7 @@ class Game:
     def draw_table(self, top, which="all"):
         """A top 10: all time, this week, or today's Daily Challenge. Yesterday's daily winner wears a crown."""
         weekly = which != "all"
-        self.text({"all": "HIGH SCORES", "week": "THIS WEEK", "day": "TODAY'S DAILY"}[which], W / 2, top, 18, GOLD)
+        self.text({"all": "HIGH SCORES", "week": "THIS WEEK", "day": "DAILY CHALLENGE"}[which], W / 2, top, 18, GOLD)
         status = {"online": ("ONLINE  EVERYONE'S SCORES", (111, 183, 168)),
                   "offline": ("OFFLINE  SHOWING SAVED LIST", DIM),
                   "connecting": ("CONNECTING...", DIM)}[self.board.status]
@@ -3676,12 +3676,12 @@ class Game:
                     if blink_on:
                         self.text("SPACE TO PLAY   ESC TO GO BACK", W / 2, 476, 11, DIM)
             elif self.mode == "board":
-                for k, (tab, label) in enumerate((("all", "ALL TIME"), ("week", "THIS WEEK"), ("day", "TODAY"))):
-                    self.button(label, W / 2 + (k - 1) * 124, 72, 116, 26, lambda tab=tab: self.board_tab_to(tab), 10,
+                for k, (tab, label) in enumerate((("all", "ALL TIME"), ("week", "THIS WEEK"), ("day", "DAILY CHALLENGE"))):
+                    self.button(label, W / 2 + (k - 1) * 128, 72, 124, 26, lambda tab=tab: self.board_tab_to(tab), 8,
                                 INK if self.board_tab == tab else DIM)
                 self.draw_table(110, self.board_tab)
                 if not TOUCH:
-                    self.text("TAB  ALL TIME / THIS WEEK / TODAY", W / 2, 420, 9, DIM)
+                    self.text("TAB  ALL TIME / THIS WEEK / DAILY CHALLENGE", W / 2, 420, 9, DIM)
                 if TOUCH:
                     self.button("BACK", W / 2 - 76, 404, 140, 34, self.go("title"), 12, DIM)
                     self.button("PLAY", W / 2 + 76, 404, 140, 34, self.start, 12, CLAWD)
