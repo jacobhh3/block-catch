@@ -20,7 +20,7 @@ TOUCH = WEB or os.environ.get("BLOCKCATCH_TOUCH") == "1"  # on-screen buttons; t
 
 W, H, GROUND = 400, 560, 512
 PAD = 170 if TOUCH else 0  # height of the touch controls strip under the game
-PAD_KEYS = [("left", 10, 98), ("right", 114, 98), ("jump", 218, 172)]  # touch buttons: left edge and width
+PAD_KEYS = [("left", 10, 98), ("right", 114, 98), ("zap", 218, 70), ("jump", 294, 96)]  # touch buttons: left edge and width
 KEY_ROWS = ["1234567890", "QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"]  # on-screen keyboard for the name entry
 NIGHT = (27, 26, 36)
 PANEL = (36, 34, 47)
@@ -36,6 +36,7 @@ PICKUP_GAP = 2.0  # minimum seconds between power-ups dropping, so two never arr
 TOAST_TIME = 3.5  # seconds the "new hat" notification stays up
 HEART_FALL = 45
 BOLT_EVERY = 15  # blocks hit (in total) that drop a lightning bolt
+MAX_CHARGES = 3  # bolts Clawd can store to zap with later; catching one more zaps right away
 BOLT_FALL = 55
 BOLT_KILLS = 2  # blocks the bolt destroys at the start, nearest the ground first
 BOLT_GROWTH = 30  # seconds of play per extra block the bolt destroys
@@ -1148,6 +1149,7 @@ class Game:
         self.blocks, self.parts, self.pops = [], [], []
         self.hits = 0
         self.bolts, self.strikes = [], []
+        self.charges = 0  # stored bolts, used with down / S or the ZAP button
         self.magnets, self.magnet = [], 0.0  # pickups falling, seconds of pull left
         self.shields, self.shielded = [], False  # pickups falling; a shield saves the next lost life
         self.shield_in = SHIELD_COOLDOWN + random.random() * SHIELD_RANDOM
@@ -1291,6 +1293,8 @@ class Game:
         now = self.pad_at(pos)
         if now in ("left", "right") and now != before:  # pressing, or sliding onto, an arrow counts as a tap
             self.tap_direction(-1 if now == "left" else 1)
+        if now == "zap" and now != before:
+            self.use_charge()
         if kind == "down":
             if self.mode == "entry" and pygame.time.get_ticks() < self.entry_ready:
                 return
@@ -1766,12 +1770,29 @@ class Game:
         """The bolt destroys more blocks the longer the match goes on."""
         return min(BOLT_MAX, BOLT_KILLS + int(self.t / BOLT_GROWTH))
 
-    def zap(self):
-        """Lightning: destroy the blocks closest to the ground."""
-        self.play("zap")
+    def catch_bolt(self):
+        """A caught bolt is stored as a charge (or strikes right away when he can't hold any more)."""
         self.zaps += 1
         if self.zaps >= ZAP_GOAL:
             self.unlock_color("zaps")
+        if self.charges < MAX_CHARGES:
+            self.charges += 1
+            self.play("speed")
+            p = self.p
+            self.pops.append(dict(x=p["x"] + PW / 2, y=p["y"] - 14, life=0.9, txt="+ZAP", c=BOLT_COLOR, size=12))
+        else:
+            self.zap()
+
+    def use_charge(self):
+        """Down / S or the ZAP button: spend a stored bolt. Kept if there's nothing to hit."""
+        if self.mode != "play" or not self.charges or not any(not b.get("bomb") for b in self.blocks):
+            return
+        self.charges -= 1
+        self.zap()
+
+    def zap(self):
+        """Lightning: destroy the blocks closest to the ground."""
+        self.play("zap")
         safe = [b for b in self.blocks if not b.get("bomb")]
         targets = sorted(safe, key=lambda b: -(b["y"] + b["s"]))[:self.bolt_power]
         if targets and self.bolt_power > BOLT_KILLS:
@@ -2093,7 +2114,7 @@ class Game:
                 self.burst(hx, GROUND - 4, EARTH, 8, 100)
         self.hearts = [h for h in self.hearts if not h["dead"]]
 
-        # lightning bolt pickups: catching one strikes the blocks nearest the ground
+        # lightning bolt pickups: catching one stores a zap for later
         for o in self.bolts:
             o["t"] += dt
             o["y"] += BOLT_FALL * dt
@@ -2101,7 +2122,7 @@ class Game:
             if bx - 9 < p["x"] + PW - 4 and bx + 9 > p["x"] + 4 and o["y"] - 12 < p["y"] + PH - 6 and o["y"] + 12 > p["y"]:
                 o["dead"] = True
                 self.burst(bx, o["y"], BOLT_COLOR, 18, 200)
-                self.zap()
+                self.catch_bolt()
             elif o["y"] + 12 >= GROUND:
                 o["dead"] = True
                 self.burst(bx, GROUND - 4, BOLT_COLOR, 8, 100)
@@ -2220,12 +2241,20 @@ class Game:
         for name, r in self.pad.items():
             on = live and name in held
             col = INK if on else (DIM if live else EARTH)
+            if name == "zap" and live and self.charges and not on:
+                col = BOLT_COLOR  # lit up while there's a stored bolt
             s.fill(EARTH if on else PANEL, r)
             pygame.draw.rect(s, col, r, 2)
             cx, cy = r.center
             if name in ("left", "right"):
                 d = -1 if name == "left" else 1
                 pygame.draw.polygon(s, col, [(cx - d * 14, cy - 22), (cx + d * 16, cy), (cx - d * 14, cy + 22)])
+            elif name == "zap":
+                for row_i, row in enumerate(BOLT):
+                    for k, ch in enumerate(row):
+                        if ch == "X":
+                            s.fill(col, (cx - 12 + k * 4, cy - 34 + row_i * 4, 4, 4))
+                self.text(f"ZAP {self.charges}" if live else "ZAP", cx, cy + 22, 12, col, surf=s)
             else:
                 pygame.draw.polygon(s, col, [(cx, cy - 32), (cx - 20, cy - 6), (cx + 20, cy - 6)])
                 self.text("JUMP", cx, cy + 22, 12, col, surf=s)
@@ -2305,7 +2334,8 @@ class Game:
         sections = [
             ("CONTROLS", [("ARROWS", "move"), ("JUMP" if TOUCH else "UP", "jump"),
                           ("BLOCKS", "jump as you hit one"),
-                          ("TAP TAP", "dash left or right"), ("WALL", "jump again off the edge")]),
+                          ("TAP TAP", "dash left or right"), ("WALL", "jump again off the edge"),
+                          ("ZAP" if TOUCH else "DOWN", "use a stored bolt")]),
             ("SCORING", [("COMBO", "every 10 in a row adds x1"), ("AIR CHAIN", "hit more before landing"),
                          ("GOLD", "jump to catch it  +10")]),
             ("WATCH OUT", [("BOMBS", "never touch them"), ("3 MISSES", "and you are out")]),
@@ -2329,7 +2359,7 @@ class Game:
             for k, ch in enumerate(row):
                 if ch == "X":
                     c.fill(BOLT_COLOR, (66 + k * 3, y - 12 + r * 3, 3, 3))
-        self.text("zaps low blocks  stronger over time", 96, y, 10, DIM, "left")
+        self.text(f"stores a zap (up to {MAX_CHARGES})  stronger over time", 96, y, 10, DIM, "left")
         y += 22
         for r, row in enumerate(MAGNET):
             for k, ch in enumerate(row):
@@ -2622,8 +2652,13 @@ class Game:
 
         for i in range(max(3, self.lives)):
             self.pixel_heart(14 + i * 26, 16, 3, CLAWD if i < self.lives else EARTH)
+        x = 14 + max(3, self.lives) * 26
         if self.shielded and self.mode in ("play", "paused"):
-            self.pixel_sprite(SHIELD_ICON, 14 + max(3, self.lives) * 26, 15, 3, SHIELD_PIXELS)
+            self.pixel_sprite(SHIELD_ICON, x, 15, 3, SHIELD_PIXELS)
+            x += 26
+        if self.mode in ("play", "paused"):
+            for i in range(self.charges):
+                self.pixel_sprite(BOLT, x + i * 16, 14, 2, BOLT_COLOR)
         # streak meter: fills toward the next heart drop
         if self.mode in ("play", "paused"):
             fill = (self.streak % HEART_STREAK) / HEART_STREAK
@@ -2862,6 +2897,8 @@ class Game:
                         self.tap_direction(-1)
                     elif e.key in (pygame.K_RIGHT, pygame.K_d):
                         self.tap_direction(1)
+                    elif e.key in (pygame.K_DOWN, pygame.K_s) and self.mode == "play":
+                        self.use_charge()
                     if self.mode == "paused" and self.leave_in is not None:
                         if e.key in (pygame.K_SPACE, pygame.K_RETURN, pygame.K_ESCAPE, pygame.K_p, pygame.K_q):
                             self.cancel_leave()
