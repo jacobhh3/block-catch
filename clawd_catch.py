@@ -25,10 +25,10 @@ PAD = 214 if TOUCH else 0  # height of the touch controls strip under the game
 # the arrows run the full height.
 PAD_KEYS = [("left", 10, 16, 98, 182), ("right", 114, 16, 98, 182), ("zap", 218, 16, 172, 38),
             ("jump", 218, 60, 172, 138)]
-# phone held sideways: the game in the middle, a column of buttons each side. ZAP over the left arrow,
-# JUMP over the right arrow. The columns are as wide as the phone's shape allows.
+# phone held sideways: the game in the middle, a column of buttons each side. Both arrows on the left,
+# ZAP over JUMP on the right. The columns are as wide as the phone's shape allows.
 SIDE_MIN, SIDE_MAX = 170, 420  # column width limits
-SIDE_TOP = 220  # height of ZAP and JUMP; the arrows fill the rest
+SIDE_ZAP = 170  # height of ZAP; JUMP fills the rest under it
 KEY_ROWS = ["1234567890", "QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"]  # on-screen keyboard for the name entry
 NIGHT = (27, 26, 36)
 PANEL = (36, 34, 47)
@@ -1326,12 +1326,13 @@ class Game:
                     pass
             side = int(max(SIDE_MIN, min(SIDE_MAX, (H * shape - W) / 2)))
             m, w = 14, side - 28
+            half = (w - m) // 2
             right = side + W + m
             self.view_x = side
             size = (W + 2 * side, H)
-            self.pad = {"zap": pygame.Rect(m, m, w, SIDE_TOP), "left": pygame.Rect(m, 2 * m + SIDE_TOP, w, H - SIDE_TOP - 3 * m),
-                        "jump": pygame.Rect(right, m, w, SIDE_TOP),
-                        "right": pygame.Rect(right, 2 * m + SIDE_TOP, w, H - SIDE_TOP - 3 * m)}
+            self.pad = {"left": pygame.Rect(m, m, half, H - 2 * m), "right": pygame.Rect(2 * m + half, m, half, H - 2 * m),
+                        "zap": pygame.Rect(right, m, w, SIDE_ZAP),
+                        "jump": pygame.Rect(right, 2 * m + SIDE_ZAP, w, H - SIDE_ZAP - 3 * m)}
         else:
             self.view_x = 0
             size = (W, H + PAD)
@@ -1434,7 +1435,7 @@ class Game:
         return 38 + d * 70 + random.random() * 14, 1.9 - d * 1.15
 
     def hat_sprite(self, i, now):
-        """Hat i as drawn right now: its animation frame."""
+        """Hat i as drawn at now (milliseconds): its animation frame."""
         name = HATS[i][0]
         if name in HAT_SPRING:
             key = (round(self.sprout["bend"]), i in self.unlocked)
@@ -1446,7 +1447,7 @@ class Game:
         frames = self.hat_art[i] if i in self.unlocked else self.hat_shadow[i]
         k = 0
         if name in HAT_ANIM and (name not in HAT_AIR_ONLY or not self.p["on_ground"]):
-            k = int(now * HAT_ANIM[name][0]) % len(frames)
+            k = int(now / 1000 * HAT_ANIM[name][0]) % len(frames)  # now is in milliseconds
         return frames[k]
 
     def swing_sprout(self, dt):
@@ -2363,8 +2364,8 @@ class Game:
                 for row_i, row in enumerate(BOLT):
                     for k, ch in enumerate(row):
                         if ch == "X":
-                            s.fill(col, (cx - 18 + k * 6, cy - 44 + row_i * 6, 6, 6))
-                self.text(f"ZAP x{self.charge}" if live and self.charge else "ZAP", cx, cy + 34, 14, col, surf=s)
+                            s.fill(col, (cx - 15 + k * 5, cy - 36 + row_i * 5, 5, 5))
+                self.text(f"ZAP x{self.charge}" if live and self.charge else "ZAP", cx, cy + 26, 14, col, surf=s)
             elif name == "zap":  # a little bolt beside the label
                 for row_i, row in enumerate(BOLT):
                     for k, ch in enumerate(row):
@@ -2660,7 +2661,7 @@ class Game:
             # the hat goes on before he's squashed or spun, so it stays on his head through flips and wiggles.
             # Padded the same above and below, so spinning the whole thing turns it around his middle.
             art, name = self.hat_sprite(hat, now), HATS[hat][0]
-            bob = round(HAT_BOB.get(name, 0) * (1 + math.sin(now * 2.5)) / 2)
+            bob = round(HAT_BOB.get(name, 0) * (1 + math.sin(now / 400)) / 2)
             hat_bottom = HAT_DROP.get(name, 0) * PX - bob  # from the top of his head
             pad = max(0, art.get_height() - hat_bottom)
             whole = pygame.Surface((max(PW, art.get_width()), PH + 2 * pad), pygame.SRCALPHA)
