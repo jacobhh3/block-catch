@@ -36,10 +36,9 @@ PICKUP_GAP = 2.0  # minimum seconds between power-ups dropping, so two never arr
 TOAST_TIME = 3.5  # seconds the "new hat" notification stays up
 HEART_FALL = 45
 BOLT_EVERY = 15  # blocks hit (in total) that drop a lightning bolt
-MAX_CHARGES = 3  # bolts Clawd can store to zap with later; catching one more zaps right away
 BOLT_FALL = 55
-BOLT_KILLS = 2  # blocks the first zap of a game destroys, nearest the ground first
-BOLT_MAX = 12  # each bolt caught after the first adds a block to every zap, up to this many
+BOLT_KILLS = 2  # blocks a zap destroys from one bolt, nearest the ground first
+ZAP_MAX = 5  # each extra bolt caught before using the zap makes it destroy one more, up to this many
 BOLT_COLOR = (255, 226, 102)
 COMBO_STEP = 10  # hits in a row per extra score multiplier
 MAX_MULT = 4
@@ -1169,7 +1168,7 @@ class Game:
         self.blocks, self.parts, self.pops = [], [], []
         self.hits = 0
         self.bolts, self.strikes = [], []
-        self.charges = 0  # stored bolts, used with E or the ZAP button
+        self.charge = 0  # blocks the stored zap will destroy (0: none), used with E or the ZAP button
         self.magnets, self.magnet = [], 0.0  # pickups falling, seconds of pull left
         self.shields, self.shielded = [], False  # pickups falling; a shield saves the next lost life
         self.shield_in = SHIELD_COOLDOWN + random.random() * SHIELD_RANDOM
@@ -1662,7 +1661,7 @@ class Game:
         self.score += pts
         chain = air and self.p["chain"] >= 2
         self.play("gold" if value == GOLD_POINTS else "air" if chain else f"hit{self.multiplier}")
-        if self.hits % BOLT_EVERY == 0:
+        if self.hits % BOLT_EVERY == 0 and self.charge < ZAP_MAX:  # no bolts while the zap is full
             self.queue_pickup("bolts")
         if self.hits % MAGNET_EVERY == 0:
             self.queue_pickup("magnets")
@@ -1806,40 +1805,33 @@ class Game:
             self.dust.append(dict(x=x + random.uniform(-14, 14), y=GROUND - random.uniform(2, 8),
                                   vx=random.uniform(-40, 40), r=random.uniform(4, 8), life=0.8))
 
-    @property
-    def bolt_power(self):
-        """Every bolt caught this game makes zaps hit one more block."""
-        return min(BOLT_MAX, BOLT_KILLS + max(0, self.game_counts.get("bolts_caught", 0) - 1))
-
     def catch_bolt(self):
-        """A caught bolt is stored as a charge (or strikes right away when he can't hold any more)."""
+        """The first bolt charges a zap; each one after that, until it's used, makes it destroy one more block."""
         self.zaps += 1
         if self.zaps >= ZAP_GOAL:
             self.unlock_color("zaps")
-        self.game_counts["bolts_caught"] = self.game_counts.get("bolts_caught", 0) + 1
-        if self.charges < MAX_CHARGES:
-            self.charges += 1
-            self.play("speed")
-            p = self.p
-            txt = "+ZAP" if self.bolt_power == BOLT_KILLS else f"+ZAP  x{self.bolt_power}"  # how strong zaps are now
-            self.pops.append(dict(x=p["x"] + PW / 2, y=p["y"] - 14, life=0.9, txt=txt, c=BOLT_COLOR, size=12))
-        else:
-            self.zap()
+        if self.charge >= ZAP_MAX:
+            return  # already full (this one was falling when it filled up)
+        self.charge = self.charge + 1 if self.charge else BOLT_KILLS
+        self.play("speed")
+        p = self.p
+        txt = "+ZAP" if self.charge == BOLT_KILLS else ("ZAP MAX" if self.charge == ZAP_MAX else f"ZAP x{self.charge}")
+        self.pops.append(dict(x=p["x"] + PW / 2, y=p["y"] - 14, life=0.9, txt=txt, c=BOLT_COLOR, size=12))
 
     def use_charge(self):
-        """E or the ZAP button: spend a stored bolt. Kept if there's nothing to hit."""
-        if self.mode != "play" or not self.charges or not any(not b.get("bomb") for b in self.blocks):
+        """E or the ZAP button: use the stored zap, which then goes back to nothing. Kept if there's nothing to hit."""
+        if self.mode != "play" or not self.charge or not any(not b.get("bomb") for b in self.blocks):
             return
-        self.charges -= 1
-        self.zap()
+        power, self.charge = self.charge, 0
+        self.zap(power)
 
-    def zap(self):
-        """Lightning: destroy the blocks closest to the ground."""
+    def zap(self, power):
+        """Lightning: destroy the power blocks closest to the ground."""
         self.play("zap")
         safe = [b for b in self.blocks if not b.get("bomb")]
-        targets = sorted(safe, key=lambda b: -(b["y"] + b["s"]))[:self.bolt_power]
-        if targets and self.bolt_power > BOLT_KILLS:
-            self.pops.append(dict(x=W / 2, y=140, life=1.0, txt=f"ZAP x{self.bolt_power}", c=BOLT_COLOR, size=18))
+        targets = sorted(safe, key=lambda b: -(b["y"] + b["s"]))[:power]
+        if targets and power > BOLT_KILLS:
+            self.pops.append(dict(x=W / 2, y=140, life=1.0, txt=f"ZAP x{power}", c=BOLT_COLOR, size=18))
         if targets:
             self.count("zapped", len(targets))
         for b in targets:
@@ -2201,7 +2193,8 @@ class Game:
             kind = self.pickup_queue.pop(0)
             if kind == "shields":  # the cooldown counts from when it actually drops
                 self.shield_in = SHIELD_COOLDOWN + random.random() * SHIELD_RANDOM
-            getattr(self, kind).append(dict(x=40 + random.random() * (W - 80), y=-24.0, t=0.0, dead=False))
+            if kind != "bolts" or self.charge < ZAP_MAX:  # the zap may have filled up while this one waited
+                getattr(self, kind).append(dict(x=40 + random.random() * (W - 80), y=-24.0, t=0.0, dead=False))
 
         # shield pickups: catching one saves Clawd's next lost life (they don't stack)
         for o in self.shields:
@@ -2285,7 +2278,7 @@ class Game:
         for name, r in self.pad.items():
             on = live and name in held
             col = INK if on else (DIM if live else EARTH)
-            if name == "zap" and live and self.charges and not on:
+            if name == "zap" and live and self.charge and not on:
                 col = BOLT_COLOR  # lit up while there's a stored bolt
             s.fill(EARTH if on else PANEL, r)
             pygame.draw.rect(s, col, r, 2)
@@ -2298,7 +2291,7 @@ class Game:
                     for k, ch in enumerate(row):
                         if ch == "X":
                             s.fill(col, (cx - 12 + k * 4, cy - 34 + row_i * 4, 4, 4))
-                self.text(f"ZAP {self.charges}" if live else "ZAP", cx, cy + 22, 12, col, surf=s)
+                self.text(f"ZAP x{self.charge}" if live and self.charge else "ZAP", cx, cy + 22, 12, col, surf=s)
             else:
                 pygame.draw.polygon(s, col, [(cx, cy - 32), (cx - 20, cy - 6), (cx + 20, cy - 6)])
                 self.text("JUMP", cx, cy + 22, 12, col, surf=s)
@@ -2403,7 +2396,7 @@ class Game:
             for k, ch in enumerate(row):
                 if ch == "X":
                     c.fill(BOLT_COLOR, (66 + k * 3, y - 12 + r * 3, 3, 3))
-        self.text(f"stores a zap (up to {MAX_CHARGES})  each one stronger", 96, y, 10, DIM, "left")
+        self.text(f"charges a zap  more bolts: stronger (max {ZAP_MAX})", 96, y, 10, DIM, "left")
         y += 22
         for r, row in enumerate(MAGNET):
             for k, ch in enumerate(row):
@@ -2712,8 +2705,10 @@ class Game:
             self.pixel_sprite(SHIELD_ICON, x, 15, 3, SHIELD_PIXELS)
             x += 26
         if self.mode in ("play", "paused"):
-            for i in range(self.charges):
-                self.pixel_sprite(BOLT, x + i * 16, 14, 2, BOLT_COLOR)
+            if self.charge:  # the stored zap, and how many blocks it will destroy
+                full = self.charge >= ZAP_MAX
+                self.pixel_sprite(BOLT, x, 14, 2, INK if full and int(now / 250) % 2 else BOLT_COLOR)
+                self.text(f"x{self.charge}", x + 16, 22, 10, BOLT_COLOR, "left")
         # streak meter: fills toward the next heart drop
         if self.mode in ("play", "paused"):
             fill = (self.streak % HEART_STREAK) / HEART_STREAK
