@@ -20,7 +20,8 @@ import pygame
 WEB = sys.platform == "emscripten"  # running in a browser (built with pygbag)
 if WEB:
     import platform  # pygbag's bridge to the page's JavaScript
-TOUCH = WEB or os.environ.get("BLOCKCATCH_TOUCH") == "1"  # on-screen buttons; the env var tests them on PC
+TOUCH = WEB or os.environ.get("BLOCKCATCH_TOUCH") == "1"  # phone layout: the control strip; the env var tests it on PC
+# (menus are buttons everywhere: tapped on phones, clicked on PC, and the PC keys still work too)
 
 VERSION = "1.0"  # this update's name, shown as V1.0; raise it for every release (release.py won't reuse one)
 
@@ -1956,13 +1957,8 @@ class Game:
             self.text("NO RESTARTS. QUITTING EARLY STILL COUNTS.", W / 2, 292, 9, INK)
             self.text("DAILY GAMES DON'T COUNT FOR NORMAL HATS AND", W / 2, 314, 8, DIM)
             self.text("COLORS. THEY EARN DAILY-ONLY ONES INSTEAD.", W / 2, 328, 8, DIM)
-            if TOUCH:
-                self.button("START MY ONE TRY", W / 2, 376, 220, 40, self.start_daily, 13, CLAWD)
-                self.button("BACK", W / 2, 426, 140, 32, self.go("title"), 12, DIM)
-            else:
-                if blink_on:
-                    self.text("ENTER  START MY ONE TRY", W / 2, 370, 13, INK)
-                self.text("ESC  BACK", W / 2, 396, 10, DIM)
+            self.button("START MY ONE TRY", W / 2, 376, 220, 40, self.start_daily, 13, CLAWD)
+            self.button("BACK", W / 2, 426, 140, 32, self.go("title"), 12, DIM)
         else:
             score = self.daily_info["scores"].get(day)
             self.text("YOU'VE PLAYED TODAY" + (f": {score}" if score is not None else ""), W / 2, 244, 13, INK)
@@ -1973,12 +1969,9 @@ class Game:
             now = eastern_now()
             left = (datetime.datetime.combine(now.date() + datetime.timedelta(days=1), datetime.time()) - now).seconds
             self.text(f"NEXT CHALLENGE IN {left // 3600}H {left % 3600 // 60:02d}M", W / 2, 292, 10, DIM)
-            if TOUCH:
-                self.button("TODAY'S SCORES", W / 2, 352, 220, 36, lambda: (setattr(self, "board_tab", "day"),
-                                                                           self.show_board()), 12, CLAWD)
-                self.button("BACK", W / 2, 400, 140, 32, self.go("title"), 12, DIM)
-            else:
-                self.text("H  TODAY'S SCORES    ESC  BACK", W / 2, 352, 10, DIM)
+            self.button("TODAY'S SCORES", W / 2, 352, 220, 36, lambda: (setattr(self, "board_tab", "day"),
+                                                                       self.show_board()), 12, CLAWD)
+            self.button("BACK", W / 2, 400, 140, 32, self.go("title"), 12, DIM)
 
     def daily_stat(self, stat):
         info = self.daily_info
@@ -2145,8 +2138,7 @@ class Game:
             pygame.draw.rect(c, CLAWD, box, 2)
             self.text(f"{shown[:4]}-{shown[4:8]}", W / 2, 186, 22, INK)
             self.text("TAP OK TO LINK" if TOUCH else "ENTER TO LINK   ESC TO GO BACK", W / 2, 236, 10, DIM)
-            if TOUCH:
-                self.button("BACK", W / 2, 300, 140, 32, self.open_sync, 12, DIM)
+            self.button("BACK", W / 2, 300, 140, 32, self.open_sync, 12, DIM)
             return
         if code:
             self.text("THIS SAVE'S CODE", W / 2, 116, 10, DIM)
@@ -2158,18 +2150,13 @@ class Game:
             self.text("LINK THEM WITH A CODE: HATS, COLORS AND", W / 2, 150, 9, DIM)
             self.text("PROGRESS ADD UP, ON PC AND PHONE ALIKE.", W / 2, 166, 9, DIM)
         self.text(self.sync_status, W / 2, 244, 10, GOLD if self.sync_status.startswith("SYNCED") else DIM)
-        if TOUCH:
-            if code:
-                self.button("SYNC NOW", W / 2, 296, 200, 36, self.sync_now, 12, CLAWD)
-                self.button("UNLINK", W / 2, 342, 200, 32, self.unlink, 11, DIM)
-            else:
-                self.button("MAKE A CODE", W / 2, 296, 200, 36, lambda: self.sync_now(fresh=True), 12, CLAWD)
-                self.button("I HAVE A CODE", W / 2, 342, 200, 32, self.enter_code, 11, INK)
-            self.button("BACK", W / 2, 470, 140, 32, self.go("stats"), 12, DIM)
+        if code:
+            self.button("SYNC NOW", W / 2, 296, 200, 36, self.sync_now, 12, CLAWD)
+            self.button("UNLINK", W / 2, 342, 200, 32, self.unlink, 11, DIM)
         else:
-            hint = "ENTER  SYNC NOW    U  UNLINK" if code else "N  MAKE A CODE    J  I HAVE A CODE"
-            self.text(hint, W / 2, 300, 10, INK)
-            self.text("ESC  BACK", W / 2, 324, 10, DIM)
+            self.button("MAKE A CODE", W / 2, 296, 200, 36, lambda: self.sync_now(fresh=True), 12, CLAWD)
+            self.button("I HAVE A CODE", W / 2, 342, 200, 32, self.enter_code, 11, INK)
+        self.button("BACK", W / 2, 470, 140, 32, self.go("stats"), 12, DIM)
 
     # ---------- score card ----------
     def make_card(self):
@@ -2411,7 +2398,7 @@ class Game:
         self.text(HATS[i][0] if hats else SKINS[i][0], 112, 446, 12, tiers[i], "left")
         self.text(tier_names[i], 112, 463, 9, tiers[i], "left")
         if i in have:
-            how = ("TAP AGAIN" if TOUCH else "ENTER") + (" TO TAKE IT OFF" if hats and i == worn else " TO WEAR")
+            how = ("TAP AGAIN" if TOUCH else "CLICK AGAIN") + (" TO TAKE IT OFF" if hats and i == worn else " TO WEAR")
             self.text("WEARING" if i == worn and not hats else how, 112, 480, 9, DIM, "left")
         else:
             parts = (self.hat_status(i) if hats else self.color_status(i)).split("  ")  # LOCKED, how, progress
@@ -2427,10 +2414,7 @@ class Game:
                 partners = st[2] if hats else st[1]
                 line, col = f"{st[0]} SET  WEAR WITH {' OR '.join(partners[:2])}", DIM
             self.text(line, W / 2, 514, 8, col)
-        if TOUCH:
-            self.button("BACK", W / 2, 534, 140, 30, self.go("title"), 12, DIM)
-        else:
-            self.text("ARROWS PICK   ENTER WEAR   TAB HATS/COLORS   ESC BACK", W / 2, 534, 8, DIM)
+        self.button("BACK", W / 2, 534, 140, 30, self.go("title"), 12, DIM)
 
     def pick_hat(self, d):
         """Title screen: cycle through no hat and every hat. Locked ones can be looked at but not worn."""
@@ -3133,7 +3117,8 @@ class Game:
         r = pygame.Rect(0, 0, w, h)
         r.center = (x, y)
         down = any(r.collidepoint(pos) for pos in self.pointers.values())
-        surf.fill(EARTH if down else NIGHT, r)
+        hover = not TOUCH and surf is self.canvas and r.collidepoint(pygame.mouse.get_pos())  # PC: lit under the mouse
+        surf.fill(EARTH if down else PANEL if hover else NIGHT, r)
         pygame.draw.rect(surf, color, r, 2)
         self.text(label, x, y, size, color, surf=surf)
         self.buttons.append((r, action))
@@ -3650,70 +3635,54 @@ class Game:
             c.blit(veil, (0, 0))
             blink_on = int(now / 500) % 2 == 0
             if self.mode == "title":
-                up = 36 if TOUCH else 0
+                up = 36
                 self.text("BLOCK", W / 2, 170 - up, 52, CLAWD)
                 self.text("CATCH", W / 2, 222 - up, 52, INK)
                 self.text("hit the blocks before they land", W / 2, 272 - up, 12, DIM)
-                if TOUCH:
-                    self.button("PLAY", W / 2 - 80, 282, 150, 44, self.start, 18, CLAWD)
-                    streak = self.daily_streak()[0]
-                    self.button("DAILY" + (f" {streak}" if streak else ""), W / 2 + 80, 282, 150, 44, self.open_daily, 16,
-                                GOLD if not self.played_today() else DIM)
-                    for k, (label, action) in enumerate((("HELP", self.go("help")), ("SCORES", self.show_board),
-                                                         ("STATS", self.go("stats")), ("GALLERY", self.open_gallery))):
-                        self.button(label, W / 2 + (k - 1.5) * 92, 328, 86, 30, action, 9)
-                    if not self.on_home_screen:
-                        self.button("ADD TO HOME SCREEN", W / 2 - 89, 366, 176, 30, self.go("home"), 9, GOLD)
-                        self.button("PC VERSION", W / 2 + 89, 366, 176, 30, self.open_download, 9, CLAWD)
-                    else:
-                        self.button("GET THE PC VERSION", W / 2, 366, 354, 30, self.open_download, 10, CLAWD)
+                self.button("PLAY", W / 2 - 80, 282, 150, 44, self.start, 18, CLAWD)
+                streak = self.daily_streak()[0]
+                self.button("DAILY" + (f" {streak}" if streak else ""), W / 2 + 80, 282, 150, 44, self.open_daily, 16,
+                            GOLD if not self.played_today() else DIM)
+                for k, (label, action) in enumerate((("HELP", self.go("help")), ("SCORES", self.show_board),
+                                                     ("STATS", self.go("stats")), ("GALLERY", self.open_gallery))):
+                    self.button(label, W / 2 + (k - 1.5) * 92, 328, 86, 30, action, 9)
+                if not TOUCH:  # the PC's keys, where phones have their home screen and PC version buttons
+                    self.text("SPACE PLAY   T DAILY   M SOUND   F11 FULL SCREEN", W / 2, 366, 9, DIM)
+                elif not self.on_home_screen:
+                    self.button("ADD TO HOME SCREEN", W / 2 - 89, 366, 176, 30, self.go("home"), 9, GOLD)
+                    self.button("PC VERSION", W / 2 + 89, 366, 176, 30, self.open_download, 9, CLAWD)
                 else:
-                    if blink_on:
-                        self.text("PRESS SPACE", W / 2, 318, 16, INK)
-                    streak = self.daily_streak()[0]
-                    self.text("T  DAILY CHALLENGE" + (f"  STREAK {streak}" if streak else "") +
-                              ("" if not self.played_today() else "  (PLAYED)"), W / 2, 342, 10,
-                              GOLD if not self.played_today() else DIM)
-                    self.text("I HELP   H SCORES   S STATS   G GALLERY   M SOUND", W / 2, 362, 10, DIM)
+                    self.button("GET THE PC VERSION", W / 2, 366, 354, 30, self.open_download, 10, CLAWD)
                 if self.update_ready:
                     if TOUCH:
                         self.rainbow_button("NEW VERSION  TAP TO UPDATE", W / 2, 80, 300, 28, self.update_now, 10, now)
-                    else:
-                        self.rainbow_text("A NEW VERSION IS OUT", W / 2, 80, 11, now / 1500)
+                    else:  # the PC game can't update itself: download the new one
+                        self.rainbow_button("NEW VERSION  CLICK TO DOWNLOAD", W / 2, 80, 300, 28, self.open_download,
+                                            10, now)
                 self.text(build_label(self.build), W - 16, 64, 8, DIM, "right")
                 # color picker, in the dirt under Clawd
                 cname = SKINS[self.skin_viewing][0]
                 ccol = TIER_COLOR[self.skin_viewing]  # the name's color shows how hard it is to get
-                if TOUCH:
-                    self.button("<", 30, 536, 44, 36, lambda: self.pick_color(-1), 14, DIM)
-                    self.button(">", W - 30, 536, 44, 36, lambda: self.pick_color(1), 14, DIM)
-                else:
-                    cname = f"C  {cname}"
+                self.button("<", 30, 536, 44, 36, lambda: self.pick_color(-1), 14, DIM)
+                self.button(">", W - 30, 536, 44, 36, lambda: self.pick_color(1), 14, DIM)
                 self.text(cname, W / 2, 528, 11, ccol)
                 self.text(self.color_status(self.skin_viewing), W / 2, 545, 9, DIM)
                 if self.viewing == -1:
                     name, col = "NO HAT", DIM
                 else:
                     name, col = HATS[self.viewing][0], HAT_TIER_COLOR[self.viewing]  # colored by how hard it is to get
-                if TOUCH:
-                    self.button("<", 30, 406, 44, 36, lambda: self.pick_hat(-1), 14, DIM)
-                    self.button(">", W - 30, 406, 44, 36, lambda: self.pick_hat(1), 14, DIM)
-                    self.text(name, W / 2, 400, 11, col)
-                    self.text(self.hat_status(self.viewing), W / 2, 416, 9, DIM)
-                else:
-                    self.text(f"<  {name}  >", W / 2, 398, 11, col)
-                    self.text(self.hat_status(self.viewing), W / 2, 414, 9, DIM)
+                self.button("<", 30, 406, 44, 36, lambda: self.pick_hat(-1), 14, DIM)
+                self.button(">", W - 30, 406, 44, 36, lambda: self.pick_hat(1), 14, DIM)
+                self.text(name, W / 2, 400, 11, col)
+                self.text(self.hat_status(self.viewing), W / 2, 416, 9, DIM)
                 c.blits(clawd)  # Clawd stays bright on the title so the hat picker is easy to see
             elif self.mode == "home":
                 self.draw_home_help()
                 self.button("BACK", W / 2, 454, 140, 34, self.go("title"), 12, DIM)
             elif self.mode == "help":
                 self.draw_help()
-                if TOUCH:
-                    self.button("BACK", W / 2 - 76, 454, 140, 34, self.go("title"), 12, DIM)
-                    self.button("PLAY", W / 2 + 76, 454, 140, 34, self.start, 12, CLAWD)
-                elif blink_on:
-                    self.text("SPACE TO PLAY   ESC TO GO BACK", W / 2, 446, 11, DIM)
+                self.button("BACK", W / 2 - 76, 454, 140, 34, self.go("title"), 12, DIM)
+                self.button("PLAY", W / 2 + 76, 454, 140, 34, self.start, 12, CLAWD)
             elif self.mode == "gallery":
                 self.draw_gallery(now)
             elif self.mode == "daily":
@@ -3722,26 +3691,16 @@ class Game:
                 self.draw_sync(blink_on)
             elif self.mode == "stats":
                 self.draw_stats()
-                if TOUCH:
-                    self.button("CROSS SAVE", W / 2, 432, 200, 30, self.open_sync, 11, GOLD)
-                    self.button("BACK", W / 2 - 76, 476, 140, 34, self.go("title"), 12, DIM)
-                    self.button("PLAY", W / 2 + 76, 476, 140, 34, self.start, 12, CLAWD)
-                else:
-                    self.text("X  CROSS SAVE  (PLAY ON PC AND PHONE)", W / 2, 448, 10, GOLD)
-                    if blink_on:
-                        self.text("SPACE TO PLAY   ESC TO GO BACK", W / 2, 476, 11, DIM)
+                self.button("CROSS SAVE", W / 2, 432, 200, 30, self.open_sync, 11, GOLD)
+                self.button("BACK", W / 2 - 76, 476, 140, 34, self.go("title"), 12, DIM)
+                self.button("PLAY", W / 2 + 76, 476, 140, 34, self.start, 12, CLAWD)
             elif self.mode == "board":
                 for k, (tab, label) in enumerate((("all", "ALL TIME"), ("week", "THIS WEEK"), ("day", "DAILY CHALLENGE"))):
                     self.button(label, W / 2 + (k - 1) * 128, 72, 124, 26, lambda tab=tab: self.board_tab_to(tab), 8,
                                 INK if self.board_tab == tab else DIM)
                 self.draw_table(110, self.board_tab)
-                if not TOUCH:
-                    self.text("TAB  ALL TIME / THIS WEEK / DAILY CHALLENGE", W / 2, 420, 9, DIM)
-                if TOUCH:
-                    self.button("BACK", W / 2 - 76, 404, 140, 34, self.go("title"), 12, DIM)
-                    self.button("PLAY", W / 2 + 76, 404, 140, 34, self.start, 12, CLAWD)
-                elif blink_on:
-                    self.text("SPACE TO PLAY   ESC TO GO BACK", W / 2, 400, 11, DIM)
+                self.button("BACK", W / 2 - 76, 404, 140, 34, self.go("title"), 12, DIM)
+                self.button("PLAY", W / 2 + 76, 404, 140, 34, self.start, 12, CLAWD)
             elif self.mode in ("paused", "resume"):
                 c.blits(clawd)  # Clawd stays bright while napping
                 self.draw_zzz(body, now)
@@ -3755,19 +3714,11 @@ class Game:
                     grow = 1 + 0.4 * (self.leave_in - n + 1) ** 3
                     self.text("BACK TO MENU IN", W / 2, 170, 13, DIM)
                     self.text(str(n), W / 2, 225, int(56 * grow), CLAWD)
-                    if TOUCH:
-                        self.button("CANCEL", W / 2, 300, 170, 44, self.cancel_leave, 16, INK)
-                    else:
-                        self.text("SPACE OR ESC TO CANCEL", W / 2, 290, 13, INK)
+                    self.button("CANCEL", W / 2, 300, 170, 44, self.cancel_leave, 16, INK)
                 else:
                     self.text("PAUSED", W / 2, 220, 40, INK)
-                    if TOUCH:
-                        self.button("RESUME", W / 2, 290, 170, 44, self.resume, 16, CLAWD)
-                        self.button("MAIN MENU", W / 2, 346, 170, 36, self.ask_leave, 12, DIM)
-                    else:
-                        if blink_on:
-                            self.text("PRESS SPACE TO RESUME", W / 2, 280, 13, DIM)
-                        self.text("Q  MAIN MENU", W / 2, 310, 11, DIM)
+                    self.button("RESUME", W / 2, 290, 170, 44, self.resume, 16, CLAWD)
+                    self.button("MAIN MENU", W / 2, 346, 170, 36, self.ask_leave, 12, DIM)
             elif self.mode == "entry":
                 top_before = max([s["score"] for s in self.scores] + [0])
                 self.text("GAME OVER", W / 2, 150, 40, CLAWD)
@@ -3787,16 +3738,11 @@ class Game:
                     streak = self.daily_streak()[0]
                     self.text(f"DAILY DONE  STREAK {streak}  COME BACK TOMORROW", W / 2, 132, 9, GOLD)
                 self.draw_table(150, "day" if self.last_daily else "all")
-                if TOUCH:
-                    self.button("MENU", W / 2 - 126, 432, 116, 34, lambda: self.reset("title"), 12, DIM)
-                    self.button("SHARE", W / 2, 432, 116, 34, self.share_card, 12, GOLD)
-                    self.button("PLAY" if self.last_daily else "PLAY AGAIN", W / 2 + 126, 432, 116, 34, self.start, 12, CLAWD)
-                else:
-                    if blink_on:
-                        self.text("SPACE TO PLAY A NORMAL GAME" if self.last_daily else "SPACE TO PLAY AGAIN", W / 2, 420, 13, DIM)
-                    self.text("ESC  MAIN MENU    C  SHARE SCORE CARD", W / 2, 440, 10, DIM)
+                self.button("MENU", W / 2 - 126, 432, 116, 34, lambda: self.reset("title"), 12, DIM)
+                self.button("SHARE", W / 2, 432, 116, 34, self.share_card, 12, GOLD)
+                self.button("PLAY" if self.last_daily else "PLAY AGAIN", W / 2 + 126, 432, 116, 34, self.start, 12, CLAWD)
 
-        if TOUCH and self.mode != "entry":
+        if self.mode != "entry":
             if self.mode == "play":
                 self.button("II", W / 2 - 24, 26, 40, 32, self.pause, 12, DIM)
             self.sound_button(W / 2 + 24 if self.mode == "play" else W / 2, 26)
