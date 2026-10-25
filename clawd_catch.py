@@ -1257,6 +1257,7 @@ class Game:
         except (OSError, ValueError, AttributeError, TypeError):
             pass
         self.sync_busy, self.sync_reply, self.sync_status, self.code_typed = False, None, "", ""
+        self.unlink_asked = False  # UNLINK was tapped once: the next tap unlinks
         self.zaps = self.landings = 0  # progress toward the colors that count over all games
         try:
             data = load_save(COLORS_FILE)
@@ -2102,12 +2103,19 @@ class Game:
         self.check_hats()
 
     def unlink(self):
+        """Takes two taps: the first only asks (it used to sit right where I HAVE A CODE had just been)."""
+        if not self.unlink_asked:
+            self.unlink_asked = True
+            self.sync_status = "UNLINK THIS DEVICE? TAP UNLINK AGAIN"
+            return
+        self.unlink_asked = False
         self.sync["code"], self.sync["inflight"] = "", None
         self.save_sync()
         self.sync_status = "UNLINKED  PROGRESS STAYS ON THIS DEVICE"
 
     def open_sync(self):
         self.mode, self.sync_status = "sync", self.sync_status if self.sync_busy else ""
+        self.unlink_asked = False
 
     def enter_code(self):
         self.mode, self.code_typed = "synccode", ""
@@ -2159,7 +2167,9 @@ class Game:
         self.text(self.sync_status, W / 2, 244, 10, GOLD if self.sync_status.startswith("SYNCED") else DIM)
         if code:
             self.button("SYNC NOW", W / 2, 296, 200, 36, self.sync_now, 12, CLAWD)
-            self.button("UNLINK", W / 2, 342, 200, 32, self.unlink, 11, DIM)
+            # well away from where I HAVE A CODE was before linking, and it asks first
+            self.button("TAP AGAIN TO UNLINK" if self.unlink_asked else "UNLINK", W / 2, 410, 200, 28, self.unlink, 10,
+                        BOMB_RED if self.unlink_asked else DIM)
         else:
             self.button("MAKE A CODE", W / 2, 296, 200, 36, lambda: self.sync_now(fresh=True), 12, CLAWD)
             self.button("I HAVE A CODE", W / 2, 342, 200, 32, self.enter_code, 11, INK)
