@@ -171,6 +171,7 @@ SKINS = [
     ("WOODY WARREN", (150, 104, 70), "walljumps100"),
     ("HAZY HALEY", (196, 178, 236), "dances10"),
     ("MULBERRY MARISSA", (150, 50, 120), "blocks1000"),
+    ("NAVY NOLAN", (48, 72, 150), "golds10"),
 ]
 # A color challenge: (what's counted, goal, what the menu says). See Game.stat_value for the counts.
 COLOR_GOALS = {
@@ -217,6 +218,7 @@ COLOR_GOALS = {
     "walljumps100": ("walljumps", 100, "WALL JUMP 100 TIMES"),
     "dances10": ("dances", 10, "DANCE 10 TIMES"),
     "blocks1000": ("blocks", 1000, "BREAK 1000 BLOCKS"),
+    "golds10": ("golds_total", 10, "CATCH 10 GOLD BLOCKS"),
     "everything": ("colors", 0, "UNLOCK EVERY OTHER COLOR"),  # goal filled in below
 }
 COLOR_GOALS["everything"] = ("colors", len(SKINS) - 1, "UNLOCK EVERY OTHER COLOR")
@@ -227,7 +229,7 @@ TIER_NAMES = ["COMMON", "UNCOMMON", "RARE", "VERY RARE", "LEGENDARY"]  # for col
 COLOR_TIERS = [
     ((120, 210, 140), ["CLAWD", "PUMPKIN PETE", "FROSTY FRANK", "OBSESSED OSCAR", "RAGING RYAN", "AIRTIME RICKY",
                        "MINTY MAYA", "COTTON CANDY CARL", "ROYAL RICHARD", "WOODY WARREN", "HAZY HALEY",
-                       "MULBERRY MARISSA"]),  # common
+                       "MULBERRY MARISSA", "NAVY NOLAN"]),  # common
     ((127, 200, 255), ["TOXIC TONY", "GOLDEN GABE", "LAVA LUKE", "SMOKY SAM", "LIGHTNING LANGLEY", "EARTHQUAKE BEN",
                        "CHERRY CHLOE", "BUBBLEGUM BELLA", "OCEAN OLIVIA", "SLIME STEVE", "NINJA NICK",
                        "DAYBREAK DAISY"]),  # uncommon
