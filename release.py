@@ -8,6 +8,8 @@ version that's already out).
 2. Builds Block Catch.exe, stamped with that commit, and copies it to the Desktop.
 3. Tags the commit v1.0 and pushes both to GitHub, which rebuilds the web version and puts it live (takes a couple
    of minutes).
+4. Makes a GitHub release for v1.0 with the exe attached as BlockCatch.exe: the game's PC VERSION button downloads
+   the newest one (needs the gh command, logged in).
 """
 import re
 import shutil
@@ -37,4 +39,10 @@ if desktop.is_dir():
 subprocess.run(["git", "tag", tag], cwd=ROOT, check=True)
 subprocess.run(["git", "push"], cwd=ROOT, check=True)
 subprocess.run(["git", "push", "origin", tag], cwd=ROOT, check=True)
+shutil.copy(ROOT / "dist" / "Block Catch.exe", ROOT / "dist" / "BlockCatch.exe")  # a name without spaces for the link
+made = subprocess.run(["gh", "release", "create", tag, str(ROOT / "dist" / "BlockCatch.exe"), "--title",
+                       f"Block Catch V{version}", "--notes", " ".join(sys.argv[1:]) or f"Block Catch V{version}"],
+                      cwd=ROOT)
+if made.returncode:
+    print(f"!! couldn't make the GitHub release: the PC VERSION button won't have V{version} until it's made")
 print(f"V{version} pushed: the phone version updates in a couple of minutes at https://jacobhh3.github.io/block-catch/")

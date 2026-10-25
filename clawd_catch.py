@@ -608,7 +608,9 @@ TWISTS = [
     ("GIANT BLOCKS", "EVERY BLOCK IS BIG"), ("TINY BLOCKS", "EVERY BLOCK IS SMALL"), ("MIRROR", "LEFT IS RIGHT"),
 ]
 CARD_W, CARD_H = 600, 320  # the score card image made for sharing
-SITE = "jacobhh3.github.io/block-catch"  # the gallery's grid of hats or colors, a page at a time
+SITE = "jacobhh3.github.io/block-catch"
+# the PC version: release.py attaches the .exe to each GitHub release, and this always points at the newest one
+PC_DOWNLOAD = "https://github.com/jacobhh3/block-catch/releases/latest/download/BlockCatch.exe"  # the gallery's grid of hats or colors, a page at a time
 JESTER_WINDOW = 3.0  # seconds after a shield pops that losing your last life earns the jester hat
 
 HEART = [".XX.XX.", "XXXXXXX", "XXXXXXX", ".XXXXX.", "..XXX..", "...X..."]
@@ -2202,6 +2204,20 @@ class Game:
         self.text(SITE, CARD_W / 2, CARD_H - 24, 11, INK, surf=card)
         return card
 
+    def open_download(self):
+        """The PC version's download, from the newest GitHub release. In a browser it starts in this tab (taps
+        reach the game a moment late, so a new window would be blocked); GitHub sends it as a download, so the
+        game stays put."""
+        try:
+            if WEB:
+                platform.window.location.assign(PC_DOWNLOAD)
+            else:
+                import webbrowser
+                webbrowser.open(PC_DOWNLOAD)
+            self.notice = dict(txt="DOWNLOADING THE PC VERSION", life=2.2)
+        except Exception:
+            self.notice = dict(txt="COULD NOT OPEN THE DOWNLOAD", life=1.6)
+
     def share_card(self):
         """Phone: the share sheet (or a download). PC: copied to the clipboard and saved in Pictures."""
         card = self.make_card()
@@ -3647,7 +3663,10 @@ class Game:
                                                          ("STATS", self.go("stats")), ("GALLERY", self.open_gallery))):
                         self.button(label, W / 2 + (k - 1.5) * 92, 328, 86, 30, action, 9)
                     if not self.on_home_screen:
-                        self.button("ADD TO HOME SCREEN", W / 2, 366, 354, 30, self.go("home"), 10, GOLD)
+                        self.button("ADD TO HOME SCREEN", W / 2 - 89, 366, 176, 30, self.go("home"), 9, GOLD)
+                        self.button("PC VERSION", W / 2 + 89, 366, 176, 30, self.open_download, 9, CLAWD)
+                    else:
+                        self.button("GET THE PC VERSION", W / 2, 366, 354, 30, self.open_download, 10, CLAWD)
                 else:
                     if blink_on:
                         self.text("PRESS SPACE", W / 2, 318, 16, INK)
