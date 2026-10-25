@@ -1402,6 +1402,11 @@ class Game:
         self.game_counts = dict(last_loss=0.0, shield_pop_t=-99.0)  # this game's progress toward hats
         self.last_tap = (0, -1.0)
         self.ghosts = []
+        self.loose_hats = []  # hats off his head, falling or lying on the ground
+        if mode == "play" and SKINS[self.skin][1] == "ghost" and self.worn in self.unlocked:
+            # a ghost can't wear a hat: it stays put a moment, then drops right through him and lands on the ground
+            self.loose_hats.append(dict(art=self.hat_sprite(self.worn, 0), x=self.p["x"] + PW / 2,
+                                        y=self.p["y"] + HAT_DROP.get(HATS[self.worn][0], 0) * PX, vy=0.0, wait=0.6))
         self.blocks, self.parts, self.pops = [], [], []
         self.hits = 0
         self.bolts, self.strikes = [], []
@@ -2626,6 +2631,17 @@ class Game:
             p["block_grace"] = JUMP_WINDOW
             p["grace_at"] = (x, y, color)
 
+    def move_loose_hats(self, dt):
+        """Hats off his head fall to the ground and lie there, tipped over."""
+        for h in self.loose_hats:
+            if h["wait"] > 0:
+                h["wait"] -= dt
+            elif h["y"] < GROUND:
+                h["vy"] += 1500 * dt
+                h["y"] = min(float(GROUND), h["y"] + h["vy"] * dt)
+                if h["y"] >= GROUND:
+                    self.burst(h["x"], GROUND - 4, EARTH, 6, 80)
+
     def burst(self, x, y, color, n, power, size=3):
         for _ in range(n):
             a = random.random() * math.tau
@@ -2717,6 +2733,8 @@ class Game:
                 q["vy"] *= -0.3
                 q["vx"] *= 0.7
         self.parts = [q for q in self.parts if q["life"] > 0]
+        if self.mode == "play":
+            self.move_loose_hats(dt)
         if self.notice:
             self.notice["life"] -= dt
             if self.notice["life"] <= 0:
@@ -3442,7 +3460,8 @@ class Game:
             layer.set_alpha(int(255 * (1 - self.shield_pop / 0.3)))
             c.blit(layer, layer.get_rect(center=body.center))
         clawd = [(sprite, body)]
-        hat = self.viewing if self.mode == "title" else self.worn
+        # a ghost's hat falls right through him once a game starts (it's still shown on him in the title screen)
+        hat = self.viewing if self.mode == "title" else -1 if SKINS[skin][1] == "ghost" else self.worn
         if hat >= 0:
             # the hat goes on before he's squashed or spun, so it stays on his head through flips and wiggles.
             # Padded the same above and below, so spinning the whole thing turns it around his middle.
@@ -3464,6 +3483,9 @@ class Game:
                 sx, sy = int(body.centerx + math.cos(a) * 18), int(top - 8 + math.sin(a) * 5)
                 c.fill(GOLD, (sx - 3, sy - 1, 7, 3))
                 c.fill(GOLD, (sx - 1, sy - 3, 3, 7))
+        for h in self.loose_hats:
+            art = pygame.transform.rotate(h["art"], -12) if h["y"] >= GROUND else h["art"]  # tipped over once it lands
+            c.blit(art, art.get_rect(midbottom=(round(h["x"]) + ox, round(h["y"]) + oy)))
 
         for q in self.dust:
             r = int(q["r"])
