@@ -625,6 +625,8 @@ SPEAKERS = [
 ]
 SHARE = ["...X...", "..XXX..", ".X.X.X.", "...X...", "XX.X.XX", "X.....X", "X.....X", "XXXXXXX"]  # iPhone share
 MENU = ["X", ".", "X", ".", "X"]
+FLAME = ["..X..", ".XX..", ".XXX.", "XXOXX", "XOOOX", "XOOOX", ".XXX."]  # the daily streak badge
+FLAME_PIXELS = {"X": (240, 110, 60), "O": (255, 205, 90)}
 FULL_SCREEN = ["XX...XX", "X.....X", ".......", "X.....X", "XX...XX"]  # the PC's full screen button  # Android Chrome's menu (three dots)
 MAGNET = ["TT...TT", "TT...TT", "XX...XX", "XX...XX", "XXX.XXX", ".XXXXX.", "..XXX.."]
 
@@ -3646,8 +3648,15 @@ class Game:
                 self.text("hit the blocks before they land", W / 2, 272 - up, 12, DIM)
                 self.button("PLAY", W / 2 - 80, 282, 150, 44, self.start, 18, CLAWD)
                 streak = self.daily_streak()[0]
-                self.button("DAILY" + (f" {streak}" if streak else ""), W / 2 + 80, 282, 150, 44, self.open_daily, 16,
-                            GOLD if not self.played_today() else DIM)
+                self.button("DAILY", W / 2 + 80, 282, 150, 44, self.open_daily, 16,
+                            GOLD if not self.played_today() else DIM)  # gray once today's try is used
+                if streak:  # the daily streak: a flame and the days in a row, on the button's corner
+                    badge = pygame.Rect(0, 0, 26 + 8 * len(str(streak)), 22)
+                    badge.center = (W / 2 + 80 + 68, 282 - 22)
+                    c.fill(NIGHT, badge)
+                    pygame.draw.rect(c, FLAME_PIXELS["X"], badge, 2)
+                    self.pixel_sprite(FLAME, badge.x + 5, badge.y + 4, 2, FLAME_PIXELS)
+                    self.text(str(streak), badge.x + 18, badge.centery + 1, 10, INK, "left")
                 for k, (label, action) in enumerate((("HELP", self.go("help")), ("SCORES", self.show_board),
                                                      ("STATS", self.go("stats")), ("GALLERY", self.open_gallery))):
                     self.button(label, W / 2 + (k - 1.5) * 92, 328, 86, 30, action, 9)
