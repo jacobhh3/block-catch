@@ -25,7 +25,10 @@ shutil.copytree(ROOT / "sounds", STAGE / "sounds")
 stamp = subprocess.run(["git", "log", "-1", "--format=%ct %h"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
 (STAGE / "version.txt").write_text(stamp)  # the game compares this with the website's copy
 
-mirror = ["--cdn", "https://cdn.jsdelivr.net/gh/pygame-web/archives@main/0.9/"] if "--mirror" in sys.argv else []
+# pygame-web.github.io/cdn/ is published from the pygame-web/cdn repo on GitHub, which jsDelivr mirrors
+PYGBAG = subprocess.run([sys.executable, "-c", "import pygbag; print(pygbag.VERSION)"], capture_output=True,
+                        text=True).stdout.strip()
+mirror = ["--cdn", f"https://cdn.jsdelivr.net/gh/pygame-web/cdn@main/{PYGBAG}/"] if "--mirror" in sys.argv else []
 subprocess.run([sys.executable, "-m", "pygbag", "--build", "--ume_block", "1", "--title", "Block Catch", *mirror,
                 "--template", str(ROOT / "web.tmpl"), str(STAGE)], check=True)
 for name in ("apple-touch-icon.png", "icon-192.png", "icon-512.png", "manifest.webmanifest"):

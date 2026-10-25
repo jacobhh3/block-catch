@@ -1,4 +1,16 @@
-<html lang="en-us"><script src="{{cookiecutter.cdn}}pythons.js" type=module id="site" data-python="python{{cookiecutter.PYBUILD}}" data-LINES=42 data-COLUMNS=132 data-os="vtx,snd,gui" async defer>#<!--
+<html lang="en-us"><script>
+// a local test built with build_web.py --mirror: anything still asked of pygame-web.github.io comes from the
+// jsDelivr mirror of the same files instead (for networks that can't reach github.io)
+if ("{{cookiecutter.cdn}}".includes("jsdelivr")) {
+    const fix = (u) => typeof u !== "string" ? u : u
+        .replace("https://pygame-web.github.io/cdn/", "https://cdn.jsdelivr.net/gh/pygame-web/cdn@main/")
+        .replace("https://pygame-web.github.io/archives/", "https://cdn.jsdelivr.net/gh/pygame-web/archives@main/");
+    const realFetch = window.fetch;
+    window.fetch = (u, o) => realFetch(u instanceof Request ? new Request(fix(u.url), u) : fix(u), o);
+    const realOpen = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function (m, u, ...rest) { return realOpen.call(this, m, fix(u), ...rest); };
+}
+</script><script src="{{cookiecutter.cdn}}pythons.js" type=module id="site" data-python="python{{cookiecutter.PYBUILD}}" data-LINES=42 data-COLUMNS=132 data-os="vtx,snd,gui" async defer>#<!--
 
 print("""
 Loading {{cookiecutter.title}} from {{cookiecutter.archive}}.apk
