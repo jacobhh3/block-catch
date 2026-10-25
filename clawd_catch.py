@@ -166,6 +166,11 @@ SKINS = [
     ("DAYBREAK DAISY", [(255, 190, 120), (255, 160, 140), (250, 210, 140)], "dailies7"),
     ("STREAKY SADIE", [(240, 110, 60), (250, 170, 60), (220, 80, 60)], "dailystreak14"),
     ("CHAMPION CHASE", [(255, 220, 110), (255, 245, 200), (232, 176, 75)], "dailywin"),
+    # simple colors added in V1.0
+    ("ROYAL RICHARD", (70, 100, 220), "games25"),
+    ("WOODY WARREN", (150, 104, 70), "walljumps100"),
+    ("HAZY HALEY", (196, 178, 236), "dances10"),
+    ("MULBERRY MARISSA", (150, 50, 120), "blocks1000"),
 ]
 # A color challenge: (what's counted, goal, what the menu says). See Game.stat_value for the counts.
 COLOR_GOALS = {
@@ -208,6 +213,10 @@ COLOR_GOALS = {
     "dailies7": ("dailies", 7, "PLAY 7 DAILY CHALLENGES"),
     "dailystreak14": ("daily_streak", 14, "14-DAY DAILY STREAK"),
     "dailywin": ("daily_wins", 1, "WIN A DAILY (#1 WHEN THE DAY ENDS)"),
+    "games25": ("games", 25, "PLAY 25 GAMES"),
+    "walljumps100": ("walljumps", 100, "WALL JUMP 100 TIMES"),
+    "dances10": ("dances", 10, "DANCE 10 TIMES"),
+    "blocks1000": ("blocks", 1000, "BREAK 1000 BLOCKS"),
     "everything": ("colors", 0, "UNLOCK EVERY OTHER COLOR"),  # goal filled in below
 }
 COLOR_GOALS["everything"] = ("colors", len(SKINS) - 1, "UNLOCK EVERY OTHER COLOR")
@@ -217,7 +226,8 @@ TIER_NAMES = ["COMMON", "UNCOMMON", "RARE", "VERY RARE", "LEGENDARY"]  # for col
 # color is harder than every still one. Names on the menu are colored by their tier.
 COLOR_TIERS = [
     ((120, 210, 140), ["CLAWD", "PUMPKIN PETE", "FROSTY FRANK", "OBSESSED OSCAR", "RAGING RYAN", "AIRTIME RICKY",
-                       "MINTY MAYA", "COTTON CANDY CARL"]),  # common
+                       "MINTY MAYA", "COTTON CANDY CARL", "ROYAL RICHARD", "WOODY WARREN", "HAZY HALEY",
+                       "MULBERRY MARISSA"]),  # common
     ((127, 200, 255), ["TOXIC TONY", "GOLDEN GABE", "LAVA LUKE", "SMOKY SAM", "LIGHTNING LANGLEY", "EARTHQUAKE BEN",
                        "CHERRY CHLOE", "BUBBLEGUM BELLA", "OCEAN OLIVIA", "SLIME STEVE", "NINJA NICK",
                        "DAYBREAK DAISY"]),  # uncommon
