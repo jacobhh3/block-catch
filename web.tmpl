@@ -1,14 +1,28 @@
 <html lang="en-us"><script>
-// a local test built with build_web.py --mirror: anything still asked of pygame-web.github.io comes from the
-// jsDelivr mirror of the same files instead (for networks that can't reach github.io)
-if ("{{cookiecutter.cdn}}".includes("jsdelivr")) {
-    const fix = (u) => typeof u !== "string" ? u : u
-        .replace("https://pygame-web.github.io/cdn/", "https://cdn.jsdelivr.net/gh/pygame-web/cdn@main/")
-        .replace("https://pygame-web.github.io/archives/", "https://cdn.jsdelivr.net/gh/pygame-web/archives@main/");
-    const realFetch = window.fetch;
-    window.fetch = (u, o) => realFetch(u instanceof Request ? new Request(fix(u.url), u) : fix(u), o);
-    const realOpen = XMLHttpRequest.prototype.open;
-    XMLHttpRequest.prototype.open = function (m, u, ...rest) { return realOpen.call(this, m, fix(u), ...rest); };
+// The loading bar counts everything downloaded (about 22 MB of Python and the game) as it comes in.
+// And in a local test built with build_web.py --mirror, anything still asked of pygame-web.github.io comes from the
+// jsDelivr mirror of the same files instead (for networks that can't reach github.io).
+var LOAD_BYTES = 22e6, load_got = 0  // read by the bar under the loading box
+{
+const mirror = "{{cookiecutter.cdn}}".includes("jsdelivr")
+const fix = (u) => !mirror || typeof u !== "string" ? u : u
+    .replace("https://pygame-web.github.io/cdn/", "https://cdn.jsdelivr.net/gh/pygame-web/cdn@main/")
+    .replace("https://pygame-web.github.io/archives/", "https://cdn.jsdelivr.net/gh/pygame-web/archives@main/")
+const realFetch = window.fetch
+window.fetch = async (u, o) => {
+    const r = await realFetch(mirror && u instanceof Request ? new Request(fix(u.url), u) : fix(u), o)
+    try {  // count a copy of it, so the real one (like the .wasm) is left untouched
+        const reader = r.clone().body.getReader()
+        ;(async () => { for (;;) { const { done, value } = await reader.read(); if (done) break; load_got += value.length } })()
+    } catch (e) {}
+    return r
+}
+const realOpen = XMLHttpRequest.prototype.open
+XMLHttpRequest.prototype.open = function (m, u, ...rest) {
+    let seen = 0
+    this.addEventListener("progress", (e) => { load_got += e.loaded - seen; seen = e.loaded })
+    return realOpen.call(this, m, fix(u), ...rest)
+}
 }
 </script><script src="{{cookiecutter.cdn}}pythons.js" type=module id="site" data-python="python{{cookiecutter.PYBUILD}}" data-LINES=42 data-COLUMNS=132 data-os="vtx,snd,gui" async defer>#<!--
 
@@ -107,6 +121,7 @@ async def custom_site():
 
     platform.window.infobox.style.display = "none"
     platform.window.loadclawd.style.display = "none"
+    platform.window.loadbar.style.display = "none"
     platform.window.config.gui_divider = 1
     platform.window.window_resize()
     print("default.tmpl: done")
@@ -240,6 +255,20 @@ for (const ev of ["touchend", "pointerup", "click", "keydown"])
             cursor: pointer;
             z-index: 999999;
         }
+        /* the loading bar, just under the loading box */
+        #loadbar {
+            position: fixed;
+            left: 50%;
+            top: calc(50% + 40px);
+            width: 240px;
+            height: 12px;
+            margin-left: -124px;
+            border: 2px solid #d97757;
+            background: #24222f;
+            z-index: 999999;
+            pointer-events: none;
+        }
+        #loadfill { width: 0; height: 100%; background: #d97757; }
         /* Clawd hops above the loading box now and then */
         #loadclawd {
             position: fixed;
@@ -377,6 +406,7 @@ height="{{cookiecutter.height}}px"
 
     <div id="loadclawd"></div>
     <div id="infobox">Loading, please wait ...</div>
+    <div id="loadbar"><div id="loadfill"></div></div>
     <script>
     // Clawd drawn from the same 13x9 pixel art as the game
     ;(function () {
@@ -387,6 +417,24 @@ height="{{cookiecutter.height}}px"
             if (ch != ".") px += `<rect x="${x}" y="${y}" width="1" height="1" fill="${ch == "E" ? "#1b1a24" : "#d97757"}"/>`
         }))
         loadclawd.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 13 9">${px}</svg>`
+    })()
+
+    // The loading bar: the downloads fill it to 80%; once they stop coming, it creeps on toward 95% while Python
+    // starts up, and it's full when the game says TAP TO START.
+    ;(function () {
+        let shown = 0, last = 0, still = 0
+        const tick = (t) => {
+            if (loadbar.style.display == "none") return
+            still = load_got == last ? still + 1 : 0
+            last = load_got
+            let target = Math.min(1, load_got / LOAD_BYTES) * 80
+            if (infobox.innerText.startsWith("TAP")) target = 100
+            else if (load_got > 1e6 && still > 60) target = Math.max(shown, 80) + (95 - Math.max(shown, 80)) * 0.01
+            shown = Math.max(shown, Math.min(100, target))
+            loadfill.style.width = shown + "%"
+            requestAnimationFrame(tick)
+        }
+        requestAnimationFrame(tick)
     })()
     </script>
 
@@ -451,12 +499,22 @@ frameborder="1"
 
     // Fit the game to the screen at its own shape. pygbag's version measures only once, sometimes
     // before the game has set its size, which squashed it.
+    // iPhones: the page reaches under the Dynamic Island (or notch) and the home bar, so measure those and keep
+    // the game between them (otherwise the sound and pause buttons sit under the island, out of reach)
+    const safe = document.createElement("div")
+    safe.style.cssText = "position:fixed;visibility:hidden;pointer-events:none;" +
+        "padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)"
+    document.documentElement.appendChild(safe)
     function fit_game() {
         const c = document.getElementById("canvas")
         if (c.width <= 1) return
-        const scale = Math.min(window.innerWidth / c.width, window.innerHeight / c.height)
+        const inset = getComputedStyle(safe)
+        const top = parseFloat(inset.paddingTop) || 0, bottom = parseFloat(inset.paddingBottom) || 0
+        const scale = Math.min(window.innerWidth / c.width, (window.innerHeight - top - bottom) / c.height)
         c.style.width = Math.floor(c.width * scale) + "px"
         c.style.height = Math.floor(c.height * scale) + "px"
+        c.style.top = top + "px"
+        c.style.bottom = bottom + "px"
         c.style.margin = "auto"
     }
     setInterval(fit_game, 300)
