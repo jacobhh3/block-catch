@@ -10,4 +10,4 @@ DREAMLO_PUBLIC = "6ac7f2ab8f40bc15a840f341"
 # prints here before deploying.
 [[kv_namespaces]]
 binding = "STORE"
-id = "REPLACE_WITH_KV_ID"
+id = "8a94ea0bb5c147a6b65b9b1df03f4e85"
