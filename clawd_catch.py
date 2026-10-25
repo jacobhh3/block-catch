@@ -624,7 +624,8 @@ SPEAKERS = [
     ["...X......", "..XX......", "XXXX.X.X..", "XXXX..X...", "XXXX.X.X..", "..XX......", "...X......"],
 ]
 SHARE = ["...X...", "..XXX..", ".X.X.X.", "...X...", "XX.X.XX", "X.....X", "X.....X", "XXXXXXX"]  # iPhone share
-MENU = ["X", ".", "X", ".", "X"]  # Android Chrome's menu (three dots)
+MENU = ["X", ".", "X", ".", "X"]
+FULL_SCREEN = ["XX...XX", "X.....X", ".......", "X.....X", "XX...XX"]  # the PC's full screen button  # Android Chrome's menu (three dots)
 MAGNET = ["TT...TT", "TT...TT", "XX...XX", "XX...XX", "XXX.XXX", ".XXXXX.", "..XXX.."]
 
 
@@ -1588,6 +1589,10 @@ class Game:
     def sound_button(self, x, y):
         self.button("", x, y, 44, 32, self.toggle_sound, color=DIM)
         self.pixel_sprite(SPEAKERS[self.sound], x - 15, y - 10, 3, DIM)
+
+    def full_screen_button(self, x, y):
+        self.button("", x, y, 44, 32, self.toggle_fullscreen, color=DIM)
+        self.pixel_sprite(FULL_SCREEN, x - 10, y - 7, 3, INK if self.fullscreen else DIM)
 
     # ---------- touch ----------
     def pad_at(self, pos):
@@ -3271,7 +3276,7 @@ class Game:
             ("CONTROLS", [("ARROWS", "move"), ("JUMP" if TOUCH else "UP", "jump"),
                           ("BLOCKS", "jump as you hit one"),
                           ("TAP TAP", "dash left or right"), ("WALL", "jump again off the edge"),
-                          ("ZAP" if TOUCH else "E", "use a stored bolt")] + ([] if TOUCH else [("F11", "full screen")])),
+                          ("ZAP" if TOUCH else "E", "use a stored bolt")] + ([] if TOUCH else [("F11", "full screen (or alt+enter)")])),
             ("SCORING", [("COMBO", "every 10 in a row adds x1"), ("AIR CHAIN", "hit more before landing"),
                          ("GOLD", "jump to catch it  +10")]),
             ("WATCH OUT", [("BOMBS", "never touch them"), ("3 MISSES", "and you are out")]),
@@ -3498,9 +3503,9 @@ class Game:
                 sx, sy = int(body.centerx + math.cos(a) * 18), int(top - 8 + math.sin(a) * 5)
                 c.fill(GOLD, (sx - 3, sy - 1, 7, 3))
                 c.fill(GOLD, (sx - 1, sy - 3, 3, 7))
-        for h in self.loose_hats:
-            art = pygame.transform.rotate(h["art"], -12) if h["y"] >= GROUND else h["art"]  # tipped over once it lands
-            c.blit(art, art.get_rect(midbottom=(round(h["x"]) + ox, round(h["y"]) + oy)))
+        for h in self.loose_hats:  # h["y"] is where its lowest pixel is: on the ground once it lands
+            art = h["art"]
+            c.blit(art, (round(h["x"] - art.get_width() / 2) + ox, round(h["y"]) - art.get_bounding_rect().bottom + oy))
 
         for q in self.dust:
             r = int(q["r"])
@@ -3646,13 +3651,10 @@ class Game:
                 for k, (label, action) in enumerate((("HELP", self.go("help")), ("SCORES", self.show_board),
                                                      ("STATS", self.go("stats")), ("GALLERY", self.open_gallery))):
                     self.button(label, W / 2 + (k - 1.5) * 92, 328, 86, 30, action, 9)
-                if not TOUCH:  # the PC's keys, where phones have their home screen and PC version buttons
+                if not TOUCH:  # the PC's keys, where phones have their home screen button
                     self.text("SPACE PLAY   T DAILY   M SOUND   F11 FULL SCREEN", W / 2, 366, 9, DIM)
                 elif not self.on_home_screen:
-                    self.button("ADD TO HOME SCREEN", W / 2 - 89, 366, 176, 30, self.go("home"), 9, GOLD)
-                    self.button("PC VERSION", W / 2 + 89, 366, 176, 30, self.open_download, 9, CLAWD)
-                else:
-                    self.button("GET THE PC VERSION", W / 2, 366, 354, 30, self.open_download, 10, CLAWD)
+                    self.button("ADD TO HOME SCREEN", W / 2, 366, 354, 30, self.go("home"), 10, GOLD)
                 if self.update_ready:
                     if TOUCH:
                         self.rainbow_button("NEW VERSION  TAP TO UPDATE", W / 2, 80, 300, 28, self.update_now, 10, now)
@@ -3691,7 +3693,8 @@ class Game:
                 self.draw_sync(blink_on)
             elif self.mode == "stats":
                 self.draw_stats()
-                self.button("CROSS SAVE", W / 2, 432, 200, 30, self.open_sync, 11, GOLD)
+                self.button("CROSS SAVE", W / 2 - 89, 432, 170, 30, self.open_sync, 11, GOLD)
+                self.button("PC VERSION", W / 2 + 89, 432, 170, 30, self.open_download, 11, CLAWD)
                 self.button("BACK", W / 2 - 76, 476, 140, 34, self.go("title"), 12, DIM)
                 self.button("PLAY", W / 2 + 76, 476, 140, 34, self.start, 12, CLAWD)
             elif self.mode == "board":
@@ -3743,9 +3746,16 @@ class Game:
                 self.button("PLAY" if self.last_daily else "PLAY AGAIN", W / 2 + 126, 432, 116, 34, self.start, 12, CLAWD)
 
         if self.mode != "entry":
-            if self.mode == "play":
-                self.button("II", W / 2 - 24, 26, 40, 32, self.pause, 12, DIM)
-            self.sound_button(W / 2 + 24 if self.mode == "play" else W / 2, 26)
+            playing = self.mode == "play"
+            if TOUCH:
+                if playing:
+                    self.button("II", W / 2 - 24, 26, 40, 32, self.pause, 12, DIM)
+                self.sound_button(W / 2 + 24 if playing else W / 2, 26)
+            else:  # PC: a full screen button too (F11 is a brightness or volume key on many laptops)
+                if playing:
+                    self.button("II", W / 2 - 48, 26, 40, 32, self.pause, 12, DIM)
+                self.sound_button(W / 2 if playing else W / 2 - 24, 26)
+                self.full_screen_button(W / 2 + 48 if playing else W / 2 + 24, 26)
         if self.notice:
             self.text(self.notice["txt"], W / 2, 64, 12, INK)
 
@@ -3827,7 +3837,7 @@ class Game:
                     if e.key == pygame.K_m:
                         self.toggle_sound()
                         continue
-                    if e.key == pygame.K_F11:
+                    if e.key == pygame.K_F11 or e.key in (pygame.K_RETURN, pygame.K_KP_ENTER) and e.mod & pygame.KMOD_ALT:
                         self.toggle_fullscreen()
                         continue
                     if self.mode == "gallery":
