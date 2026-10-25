@@ -22,6 +22,8 @@ if WEB:
     import platform  # pygbag's bridge to the page's JavaScript
 TOUCH = WEB or os.environ.get("BLOCKCATCH_TOUCH") == "1"  # on-screen buttons; the env var tests them on PC
 
+VERSION = "1.0"  # this update's name, shown as V1.0; raise it for every release (release.py won't reuse one)
+
 W, H, GROUND = 400, 560, 512
 PAD = 214 if TOUCH else 0  # height of the touch controls strip under the game
 # touch buttons: left edge, top (down from the top of the strip), width, height. ZAP is a short bar above JUMP;
@@ -637,8 +639,8 @@ def build_time(stamp):
 
 
 def build_label(stamp):
-    """Short version text for the main menu, like "VERSION 78165AA"; "DEV" when run from source."""
-    return f"VERSION {stamp.split()[-1].upper()}" if build_time(stamp) else "VERSION DEV"
+    """Version text for the main menu, like "V1.0"; "V1.0 DEV" when run from source."""
+    return f"V{VERSION}" if build_time(stamp) else f"V{VERSION} DEV"
 
 
 def rainbow(t):
