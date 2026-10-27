@@ -23,7 +23,7 @@ if WEB:
 TOUCH = WEB or os.environ.get("BLOCKCATCH_TOUCH") == "1"  # phone layout: the control strip; the env var tests it on PC
 # (menus are buttons everywhere: tapped on phones, clicked on PC, and the PC keys still work too)
 
-VERSION = "1.0"  # this update's name, shown as V1.0; raise it for every release (release.py won't reuse one)
+VERSION = "1.1"  # this update's name, shown as V1.0; raise it for every release (release.py won't reuse one)
 
 W, H, GROUND = 400, 560, 512
 PAD = 214 if TOUCH else 0  # height of the touch controls strip under the game
@@ -171,7 +171,7 @@ SKINS = [
     ("ROYAL RICHARD", (70, 100, 220), "games25"),
     ("WOODY WARREN", (150, 104, 70), "walljumps100"),
     ("HAZY HALEY", (196, 178, 236), "dances10"),
-    ("MULBERRY MARISSA", (150, 50, 120), "blocks1000"),
+    ("MAD MARISSA", (150, 50, 120), "blocks1000"),
     ("NAVY NOLAN", (48, 72, 150), "golds10"),
 ]
 # A color challenge: (what's counted, goal, what the menu says). See Game.stat_value for the counts.
@@ -230,7 +230,7 @@ TIER_NAMES = ["COMMON", "UNCOMMON", "RARE", "VERY RARE", "LEGENDARY"]  # for col
 COLOR_TIERS = [
     ((120, 210, 140), ["CLAWD", "PUMPKIN PETE", "FROSTY FRANK", "OBSESSED OSCAR", "RAGING RYAN", "AIRTIME RICKY",
                        "MINTY MAYA", "COTTON CANDY CARL", "ROYAL RICHARD", "WOODY WARREN", "HAZY HALEY",
-                       "MULBERRY MARISSA", "NAVY NOLAN"]),  # common
+                       "MAD MARISSA", "NAVY NOLAN"]),  # common
     ((127, 200, 255), ["TOXIC TONY", "GOLDEN GABE", "LAVA LUKE", "SMOKY SAM", "LIGHTNING LANGLEY", "EARTHQUAKE BEN",
                        "CHERRY CHLOE", "BUBBLEGUM BELLA", "OCEAN OLIVIA", "SLIME STEVE", "NINJA NICK",
                        "DAYBREAK DAISY"]),  # uncommon
@@ -604,10 +604,51 @@ GALLERY_COLS, GALLERY_ROWS, GALLERY_CELL = 6, 5, 58
 # Daily Challenge: one run a day, the same for everyone (blocks come from a dice roll seeded with the date),
 # with a twist from this list, and one try. Days turn over at midnight Eastern, like the weekly board.
 TWISTS = [
-    ("FAST BLOCKS", "BLOCKS FALL FASTER"), ("LOW GRAVITY", "FLOATY JUMPS"), ("SUPER SPEED", "CLAWD RUNS FASTER"),
-    ("DOUBLE BOMBS", "TWICE THE BOMBS"), ("ONE LIFE", "NO SECOND CHANCES"), ("EARLY BOMBS", "BOMBS FROM THE START"),
-    ("GIANT BLOCKS", "EVERY BLOCK IS BIG"), ("TINY BLOCKS", "EVERY BLOCK IS SMALL"), ("MIRROR", "LEFT IS RIGHT"),
+    ("FAST BLOCKS", "BLOCKS FALL FASTER"), ("THE FLOOR IS LAVA", "DON'T TOUCH THE GROUND"),
+    ("DOUBLE BOMBS", "TWICE THE BOMBS"), ("SNOW STORM", "ICE BLOCKS FREEZE YOU"), ("EARLY BOMBS", "BOMBS FROM THE START"),
+    ("GIANT BLOCKS", "EVERY BLOCK IS BIG"), ("TINY BLOCKS", "EVERY BLOCK IS SMALL"), ("FIRE AND ICE", "LAVA BELOW, ICE ABOVE"),
+    ("GHOST BLOCKS", "NOW YOU SEE THEM"), ("CLOSING WALLS", "THE WALLS CLOSE IN"), ("LIGHTS OUT", "STAY IN THE LIGHT"),
+    ("MAGNET MANIA", "BOMBS ARE DRAWN TO YOU"),
 ]
+# the first week's twists, set by hand (its Monday was already played, and The Floor is Lava had its first day Tuesday)
+FIRST_WEEK = ["GIANT BLOCKS", "THE FLOOR IS LAVA", "GHOST BLOCKS", "SNOW STORM", "FIRE AND ICE", "TINY BLOCKS", "DOUBLE BOMBS"]
+LAVA = "THE FLOOR IS LAVA"  # the twist where the ground burns: start on a slab that crumbles once Clawd leaves it
+MANIA_BOMB_PULL = 120  # Magnet Mania: every bomb is pulled sideways toward Clawd this fast
+WALL_MAX = 100  # Closing Walls: how far each wall comes in at its closest
+WALL_CYCLE, WALL_CLOSE = 45.0, 35.0  # seconds per close-and-open; of which closing
+LIGHT_R = 95  # Lights Out: radius of the light around Clawd
+FIRE_ICE = "FIRE AND ICE"  # The Floor is Lava and Snow Storm at once: ice that lands floats on the lava for a while
+SLAB_W, SLAB_H = 110, 16
+SLAB_CRUMBLE = 0.35  # seconds the slab shakes and cracks before it breaks apart
+SINK_TIME = 1.9  # seconds of Clawd sinking into the lava when it takes his last life, before the game ends
+LAVA_BOUNCE = 700  # how high touching the lava throws Clawd (a bit more than a jump, so he can get back to the blocks)
+FLOE_W, FLOE_H = 50, 10  # an ice block that lands on the lava: a little floating platform
+FLOE_TIME = 4.0  # seconds it lasts, melting away, before it breaks up
+LAVA_COLORS = [(150, 30, 25), (215, 70, 30), (250, 130, 40), (255, 205, 90)]  # deep to bright
+SNOW = "SNOW STORM"  # the twist with ice blocks: touching one freezes Clawd until he lands
+# ice blocks (Snow Storm only): touching one shatters it and freezes Clawd until he lands (no damage, no points);
+# with a hot foot from a bomb it melts for points and he can jump off it. On the ground it just shatters.
+ICE_CHANCE = 0.27  # of drops that aren't bombs
+FIRE_ICE_CHANCE = 0.18  # the same in Fire and Ice, where landed ice also floats on the lava
+ICE_SIZE = 26
+ICE_POINTS = 5
+ICE_FROZEN_ON_GROUND = 1.0  # seconds frozen when the ice catches him standing
+ICE = (170, 225, 255)
+ICE_EDGE = (235, 250, 255)
+ICE_DARK = (110, 180, 235)
+ICE_CRYSTAL = ["......W......",  # the ice block: a pointy crystal shard, lit on the left
+               ".....WLI.....",
+               "....WLLII....",
+               "...WLLLIID...",
+               "..WLLLLIIID..",
+               "..LWLLLIIID..",
+               "..LLWLLIIID..",
+               "..LLLLLIIID..",
+               "..ILLLLIIDD..",
+               "...ILLLIDD...",
+               "....ILIDD....",
+               ".....IDD.....",
+               "......D......"]
 CARD_W, CARD_H = 600, 320  # the score card image made for sharing
 SITE = "jacobhh3.github.io/block-catch"
 # the PC version: release.py attaches the .exe to each GitHub release, and this always points at the newest one
@@ -679,6 +720,7 @@ DAILY_FILE = os.path.join(SAVE_DIR, "daily.json")  # Daily Challenge: days playe
 SYNC_CHARS = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"  # sync codes use these (no 0/O or 1/I/L to mix up)
 SITE_URL = "https://jacobhh3.github.io/block-catch/"
 VERSION_CHECK = 300  # seconds between checks for a newer build on the website
+UPDATE_POLL = 60  # seconds between asking the relay about an update countdown (started with relay/update_timer.py)
 SOUND_MODES = ["ON", "EFFECTS ONLY", "OFF"]  # M key / speaker button cycles through these
 MUSIC_VOLUME = {"play": 0.45, "paused": 0.0}  # every other screen: 0.2
 # the song's layers (sounds/music_<name>.ogg, made by make_sounds.py). While playing, layer i joins at combo
@@ -701,6 +743,16 @@ def skin_number(text):
     except (TypeError, ValueError):
         return None
     return n if 0 <= n < len(SKINS) else None
+
+
+def hat_number(value, plus_one=False):
+    """The hat a leaderboard entry was set in (-1: none or unknown). The all-time board keeps it as hat + 1
+    in dreamlo's seconds field."""
+    try:
+        n = int(str(value).strip()) - (1 if plus_one else 0)
+    except (TypeError, ValueError):
+        return -1
+    return n if 0 <= n < len(HATS) else -1
 
 
 # Before this was fixed, every phone got this same player id (the browser's Python random starts out the same),
@@ -856,14 +908,14 @@ class Leaderboard:
         with self.lock:
             return list({"week": self.weekly, "day": self.daily}.get(which, self.scores))
 
-    def submit_daily(self, name, score, skin):
+    def submit_daily(self, name, score, skin, hat=-1):
         """Today's Daily Challenge score: shown right away, sent in the background (only the first one counts)."""
         key = self.key_for(name)
         with self.lock:
             self.name = name
-            self.pending_daily.append(dict(name=name, score=score, skin=skin, day=daily_day()))
+            self.pending_daily.append(dict(name=name, score=score, skin=skin, hat=hat, day=daily_day()))
             if not any(player_of(e["key"]) == self.player_id for e in self.daily):
-                self.daily = sorted(self.daily + [dict(key=key, name=name, score=score, skin=skin)],
+                self.daily = sorted(self.daily + [dict(key=key, name=name, score=score, skin=skin, hat=hat)],
                                     key=lambda e: -e["score"])
             self.save()
         self.refresh()
@@ -872,13 +924,13 @@ class Leaderboard:
     def key_for(self, name):
         return f"{name}_{self.player_id}"
 
-    def submit(self, name, score, skin):
-        """Shows the score in the table right away, then uploads it (with the color worn) in the background."""
+    def submit(self, name, score, skin, hat=-1):
+        """Shows the score in the table right away, then uploads it (with the color and hat worn) in the background."""
         key = self.key_for(name)
         with self.lock:
             self.name = name
-            self.pending.append(dict(name=name, score=score, skin=skin))
-            self.merge(dict(key=key, name=name, score=score, skin=skin))
+            self.pending.append(dict(name=name, score=score, skin=skin, hat=hat))
+            self.merge(dict(key=key, name=name, score=score, skin=skin, hat=hat))
             self.save()
         self.refresh()
         return key
@@ -888,7 +940,7 @@ class Leaderboard:
         for s in self.scores:
             if s["key"] == entry["key"]:
                 if entry["score"] >= s["score"]:
-                    s["score"], s["skin"] = entry["score"], entry.get("skin")
+                    s["score"], s["skin"], s["hat"] = entry["score"], entry.get("skin"), entry.get("hat", -1)
                 break
         else:
             self.scores.append(entry)
@@ -947,10 +999,14 @@ class Leaderboard:
             for p in todo:
                 key = urllib.parse.quote(self.key_for(p["name"]), safe="")
                 add = f"{LB_URL}add/{key}/{int(p['score'])}"
-                try:  # with the color they wore, so other players see their name in its tier color
-                    reply = await self._get(f"{add}/{int(p.get('skin', 0))}")
+                skin = f"{add}/{int(p.get('skin', 0))}"
+                try:  # with the color and hat they wore, so other players see them dressed that way
+                    reply = await self._get(f"{skin}/{int(p.get('hat', -1)) + 1}")
                 except OSError:
-                    reply = await self._get(add)  # an older relay only takes name and score
+                    try:
+                        reply = await self._get(skin)  # an older relay doesn't take the hat
+                    except OSError:
+                        reply = await self._get(add)  # an even older one only takes name and score
                 if not reply.startswith("OK"):
                     raise OSError(reply)
                 with self.lock:
@@ -961,12 +1017,12 @@ class Leaderboard:
             if isinstance(rows, dict):
                 rows = [rows]
             online = [dict(key=r["name"], name=display_name(r["name"]), score=int(r["score"]),
-                           skin=skin_number(r.get("text"))) for r in rows]
+                           skin=skin_number(r.get("text")), hat=hat_number(r.get("seconds"), plus_one=True)) for r in rows]
             with self.lock:
                 self.scores = best_per_player(online)
                 for p in self.pending:  # anything still waiting stays visible locally
                     self.merge(dict(key=self.key_for(p["name"]), name=p["name"], score=p["score"],
-                                    skin=p.get("skin")))
+                                    skin=p.get("skin"), hat=p.get("hat", -1)))
                 self.status = "online"
                 self.save()
             try:  # Daily Challenge scores waiting to go up (a day that has passed can't be posted any more)
@@ -975,13 +1031,18 @@ class Leaderboard:
                 for p in todo:
                     if p.get("day") == daily_day():
                         key = urllib.parse.quote(self.key_for(p["name"]), safe="")
-                        await self._get(f"{LB_URL}daily/add/{key}/{int(p['score'])}/{int(p.get('skin', 0))}")
+                        sent = f"{LB_URL}daily/add/{key}/{int(p['score'])}/{int(p.get('skin', 0))}"
+                        try:
+                            await self._get(f"{sent}/{int(p.get('hat', -1)) + 1}")
+                        except OSError:
+                            await self._get(sent)  # an older relay doesn't take the hat
                     with self.lock:
                         self.pending_daily.remove(p)
                         self.save()
                 day = json.loads(await self._get(f"{LB_URL}daily/{LB_FETCH}"))
                 rows = [dict(key=r["name"], name=display_name(r["name"]), score=int(r["score"]),
-                             skin=skin_number(r.get("skin"))) for r in day.get("entries", [])]
+                             skin=skin_number(r.get("skin")), hat=hat_number(r.get("hat"), plus_one=True))
+                        for r in day.get("entries", [])]
                 with self.lock:
                     self.daily = best_per_player(rows)
                     self.yesterday = [r["name"] for r in (day.get("yesterday") or {}).get("entries", [])]
@@ -990,7 +1051,8 @@ class Leaderboard:
             try:  # this week's board (a relay from before weekly boards doesn't have one)
                 week = json.loads(await self._get(f"{LB_URL}week/{LB_FETCH}"))
                 rows = [dict(key=r["name"], name=display_name(r["name"]), score=int(r["score"]),
-                             skin=skin_number(r.get("skin"))) for r in week.get("entries", [])]
+                             skin=skin_number(r.get("skin")), hat=hat_number(r.get("hat"), plus_one=True))
+                        for r in week.get("entries", [])]
                 with self.lock:
                     self.weekly = best_per_player(rows)
             except (OSError, ValueError, KeyError, TypeError, AttributeError):
@@ -1013,6 +1075,16 @@ def make_hat(rows, color=None, px=PX):
     return surf
 
 
+def make_crystal(px):
+    colors = {"W": (255, 255, 255), "L": (200, 238, 255), "I": ICE, "D": ICE_DARK}
+    surf = pygame.Surface((len(ICE_CRYSTAL[0]) * px, len(ICE_CRYSTAL) * px), pygame.SRCALPHA)
+    for r, row in enumerate(ICE_CRYSTAL):
+        for c, ch in enumerate(row):
+            if ch != ".":
+                surf.fill(colors[ch], (c * px, r * px, px, px))
+    return surf
+
+
 def eastern_now():
     """The time in US Eastern (daylight saving from the second Sunday of March to the first of November)."""
     utc = datetime.datetime.now(datetime.timezone.utc)
@@ -1030,9 +1102,32 @@ def daily_day():
     return eastern_now().date().isoformat()
 
 
+TWIST_START = datetime.date(2026, 10, 26)  # the first week with a twist pool (before it, the date's hash picked one)
+
+
+def week_twists(monday):
+    """A week's twists, Monday first: each day draws one at random from the pool, and it's gone for the rest of
+    the week. A week never starts with the twist the last one ended on."""
+    last = None
+    week = TWIST_START
+    while week <= monday:
+        pool = list(TWISTS)
+        random.Random(f"twists{week.isoformat()}").shuffle(pool)
+        if week == TWIST_START:
+            pool = [next(t for t in TWISTS if t[0] == name) for name in FIRST_WEEK]
+        elif pool[0] == last:
+            pool[0], pool[7] = pool[7], pool[0]  # trade it for one of the two left in the pool
+        last = pool[6]
+        week += datetime.timedelta(days=7)
+    return pool[:7]
+
+
 def daily_twist(day):
-    """The twist for a day: the same for everyone."""
-    return TWISTS[zlib.crc32(day.encode()) % len(TWISTS)]
+    """The twist for a day: the same for everyone, and never twice in one week."""
+    d = datetime.date.fromisoformat(day)
+    if d < TWIST_START:
+        return TWISTS[zlib.crc32(day.encode()) % len(TWISTS)]
+    return week_twists(d - datetime.timedelta(days=d.weekday()))[d.weekday()]
 
 
 def copy_image(path):
@@ -1228,6 +1323,7 @@ class Game:
         pygame.display.set_icon(icon)
         # the browser page scales the canvas itself, so the web version skips SCALED
         self.screen = pygame.display.set_mode((W, H + PAD), 0 if WEB else pygame.SCALED | pygame.RESIZABLE)
+        self.ice_art = make_crystal(2)  # the ice block (2px a pixel: ICE_SIZE across)
         self.canvas = pygame.Surface((W, H))
         self.clock = pygame.time.Clock()
         self.fonts = {}
@@ -1335,10 +1431,30 @@ class Game:
         self.buttons = []  # tappable menu buttons drawn this frame: (rect, action)
         self.pad = {name: pygame.Rect(x, H + y, w, h) for name, x, y, w, h in PAD_KEYS}
         self.build, self.update_ready, self.check_in = read_build(), False, 0.0
+        # the update countdown: when it ends (in pygame ticks; None: none running), whether it has, and how long
+        # the in-game UPDATE OUT banner has left
+        self.update_end, self.update_out, self.update_poll, self.update_banner = None, False, 0.0, 0.0
         self.stars = [((i * 97) % W, (i * 53) % 420, 2 if i % 3 == 0 else 1, i) for i in range(40)]
         self.reset("title")
         if self.sync["code"]:
             self.sync_now()
+
+    def walls(self):
+        """Where the screen's left and right edges are: they move in during Closing Walls."""
+        if self.daily != "CLOSING WALLS" or self.mode == "title":
+            return 0, W
+        phase = self.t % WALL_CYCLE
+        k = phase / WALL_CLOSE if phase < WALL_CLOSE else 1 - (phase - WALL_CLOSE) / (WALL_CYCLE - WALL_CLOSE)
+        inset = WALL_MAX * (0.5 - 0.5 * math.cos(math.pi * k))
+        return inset, W - inset
+
+    @property
+    def lava_floor(self):
+        return self.daily in (LAVA, FIRE_ICE)
+
+    @property
+    def icy(self):
+        return self.daily in (SNOW, FIRE_ICE)
 
     def font(self, size):
         if size not in self.fonts:
@@ -1393,11 +1509,11 @@ class Game:
         name = self.name.strip() or "CLAWD"
         self.name = name
         if self.last_daily:
-            self.last_key = self.board.submit_daily(name, self.score, self.skin)
+            self.last_key = self.board.submit_daily(name, self.score, self.skin, self.board_hat)
             pygame.key.stop_text_input()
             self.mode = "over"
             return
-        self.last_key = self.board.submit(name, self.score, self.skin)
+        self.last_key = self.board.submit(name, self.score, self.skin, self.board_hat)
         pygame.key.stop_text_input()
         self.mode = "over"
 
@@ -1416,7 +1532,14 @@ class Game:
         self.hearts = []
         self.p = dict(x=W / 2 - PW / 2, y=GROUND - PH, vx=0.0, vy=0.0, on_ground=True,
                       walk=0.0, blink=0.0, chain=0, jump_buffer=0.0, block_grace=0.0, sliding=0, slide_t=0.0, slide_panic=False, bj_t=9.0, bj_flip=False, bomb_fx=None, bomb_t=0.0,
-                      dash=0.0, dash_dir=0, dash_cd=0.0, dance=0.0, taps=0, tap_gap=0.0, air_t=0.0)
+                      dash=0.0, dash_dir=0, dash_cd=0.0, dance=0.0, taps=0, tap_gap=0.0, air_t=0.0,
+                      frozen=False, freeze_t=0.0, hot_feet=False)
+        self.sinking = None  # seconds into Clawd sinking into the lava, once it has taken his last life
+        self.slab = None  # the lava twists' starting slab: solid until Clawd leaves it (t is None), then crumbling
+        self.floes, self.chunks = [], []  # ice floating on the lava; broken pieces sinking into it
+        if mode == "play" and self.lava_floor:
+            self.slab = dict(x=W / 2 - SLAB_W / 2, top=GROUND - SLAB_H, w=SLAB_W, t=None)
+            self.p["y"] = self.slab["top"] - PH
         self.countdown, self.wake = 0.0, 0.0  # seconds left before play resumes; "!" after waking
         self.leave_in = None  # seconds left before quitting to the main menu, once MAIN MENU is chosen
         self.purples, self.bombs_hit = 0, 0  # this game's progress toward the purple and red colors
@@ -1538,6 +1661,35 @@ class Game:
         else:
             threading.Thread(target=lambda: asyncio.run(check()), daemon=True).start()
 
+    def check_update_timer(self):
+        """Asks the relay whether an update countdown is running."""
+        async def check():
+            try:
+                t = json.loads(await self.board._get(f"{LB_URL}update"))
+                at, start, now = int(t.get("at", 0)), int(t.get("start", 0)), int(t["now"])
+            except Exception:
+                return  # offline, or an older relay: try again next time
+            if not at:
+                self.update_end = None  # cancelled
+            elif build_time(self.build) * 1000 >= start or at < now - 10 * 60000:
+                self.update_end = None  # this copy is already newer than the update, or it ended a while ago
+            else:
+                self.update_end = pygame.time.get_ticks() + max(0, at - now)
+
+        if WEB:
+            asyncio.ensure_future(check())
+        else:
+            threading.Thread(target=lambda: asyncio.run(check()), daemon=True).start()
+
+    def update_timer_text(self):
+        """"UPDATE IN 4:59" while the countdown runs, "UPDATE OUT!" once it's over, or None."""
+        if self.update_out:
+            return "UPDATE OUT!"
+        if self.update_end is None:
+            return None
+        left = max(0, math.ceil((self.update_end - pygame.time.get_ticks()) / 1000))
+        return f"UPDATE IN {left // 60}:{left % 60:02d}"
+
     def update_now(self):
         if WEB:
             self.notice = dict(txt="UPDATING", life=10)
@@ -1637,9 +1789,9 @@ class Game:
         """Called on each left/right key press; a quick second tap in the same direction dashes."""
         if self.mode != "play":
             return
-        if self.daily == "MIRROR":
-            d = -d
         p = self.p
+        if p.get("frozen"):
+            return
         last_dir, last_t = self.last_tap
         if d == last_dir and self.t - last_t <= DOUBLE_TAP and p["dash_cd"] <= 0:
             p["dash"], p["dash_dir"], p["dash_cd"] = DASH_TIME, d, DASH_COOLDOWN
@@ -1884,6 +2036,19 @@ class Game:
             "landings": f"LAND {LANDING_GOAL} TIMES  {min(self.landings, LANDING_GOAL)}/{LANDING_GOAL}",
         }[SKINS[i][2]]
 
+    def unlock_how(self, i, hats):
+        """How a hat or color is earned, without the progress: shown in the gallery even once it's yours."""
+        if hats:
+            return hat_label(HATS[i][1])
+        key = SKINS[i][2]
+        if key is None:
+            return "EVERYONE STARTS WITH THIS ONE"
+        if key in COLOR_GOALS:
+            return COLOR_GOALS[key][2]
+        return {"air": f"{AIR_STREAK} IN A ROW IN THE AIR", "purple": f"{PURPLE_GOAL} PURPLE IN ONE GAME",
+                "bombs": f"HIT {BOMB_GOAL} BOMBS IN ONE GAME", "zaps": f"CATCH {ZAP_GOAL} BOLTS",
+                "landings": f"LAND {LANDING_GOAL} TIMES"}[key]
+
     def pick_color(self, d):
         """Title screen: cycle through the colors. Locked ones can be looked at but not worn."""
         spot = (COLOR_ORDER.index(self.skin_viewing) + d) % len(SKINS)  # easiest to hardest
@@ -1929,7 +2094,7 @@ class Game:
             self.sync_now()
         self.check_hats()  # the daily-only hats and colors (a streak, or a number of dailies played)
         if self.board.name:
-            self.last_key = self.board.submit_daily(self.board.name, self.score, self.skin)
+            self.last_key = self.board.submit_daily(self.board.name, self.score, self.skin, self.board_hat)
             self.mode = "over"
         else:  # first time on any board: ask for a name
             self.mode = "entry"
@@ -2415,8 +2580,12 @@ class Game:
         self.text(HATS[i][0] if hats else SKINS[i][0], 112, 446, 12, tiers[i], "left")
         self.text(tier_names[i], 112, 463, 9, tiers[i], "left")
         if i in have:
+            earned = "EARNED: " + self.unlock_how(i, hats)  # how you got it, even after you have it
+            if self.font(9).size(earned)[0] > W - 116:
+                earned = self.unlock_how(i, hats)  # a long one: just the how, still readable
+            self.text(earned, 112, 480, 9 if self.font(9).size(earned)[0] <= W - 116 else 8, (111, 183, 168), "left")
             how = ("TAP AGAIN" if TOUCH else "CLICK AGAIN") + (" TO TAKE IT OFF" if hats and i == worn else " TO WEAR")
-            self.text("WEARING" if i == worn and not hats else how, 112, 480, 9, DIM, "left")
+            self.text("WEARING" if i == worn and not hats else how, 112, 496, 9, DIM, "left")
         else:
             parts = (self.hat_status(i) if hats else self.color_status(i)).split("  ")  # LOCKED, how, progress
             self.text(parts[1] if len(parts) > 1 else parts[0], 112, 480, 9, DIM, "left")
@@ -2447,7 +2616,22 @@ class Game:
 
     @property
     def max_lives(self):
-        return 1 if self.daily == "ONE LIFE" else MAX_LIVES
+        return MAX_LIVES
+
+    @property
+    def board_hat(self):
+        """The hat to show on the leaderboard: the one worn (-1: none; a ghost can't wear one)."""
+        return self.worn if self.worn in self.unlocked and SKINS[self.skin][1] != "ghost" else -1
+
+    def break_air(self):
+        """Clawd touched down: the air chain is over, and he's told how far it got."""
+        p = self.p
+        if p["chain"] >= 2:
+            self.play("fizzle")
+            self.pops.append(dict(x=max(90, min(W - 90, p["x"] + PW / 2)), y=p["y"] - 34, life=1.2,
+                                  txt=f"AIR x{p['chain']} BROKEN", c=(111, 183, 168), size=12))
+            self.burst(p["x"] + PW / 2, p["y"] + PH, (111, 183, 168), 10, 140)
+        p["chain"] = 0
 
     @property
     def multiplier(self):
@@ -2466,6 +2650,13 @@ class Game:
             self.blocks.append(dict(x=x, y=-size, s=size, vy=fall * 0.9,
                                     c=BOMB_RED, rot=0.0, spin=0.0, dead=False, bomb=True))
             return True
+        if self.icy and self.rng.random() < (FIRE_ICE_CHANCE if self.daily == FIRE_ICE else ICE_CHANCE):
+            x = self.clear_x(ICE_SIZE, fall * 0.85)
+            if x is None:
+                return False
+            self.blocks.append(dict(x=x, y=-ICE_SIZE, s=ICE_SIZE, vy=fall * 0.85, c=ICE, rot=0.0,
+                                    spin=0.0, dead=False, ice=True))
+            return True
         k = self.rng.randrange(3)
         size = {"GIANT BLOCKS": 30 + k * 4, "TINY BLOCKS": 10 + k * 2}.get(self.daily, 16 + k * 4)
         x = self.clear_x(size, fall)
@@ -2480,7 +2671,8 @@ class Game:
         """A random x where something falling at vy won't run into anything already falling,
         or None if a few tries don't find one."""
         for _ in range(12):
-            x = 12 + self.rng.random() * (W - 24 - size)
+            left, right = self.walls()
+            x = left + 12 + self.rng.random() * (right - left - 24 - size)
             for b in self.blocks:
                 if b["dead"] or not (b["x"] - FALL_GAP < x + size and x < b["x"] + b["s"] + FALL_GAP):
                     continue
@@ -2605,6 +2797,7 @@ class Game:
             p["bomb_fx"] = "dizzy"  # bonked it with his head
         else:
             p["bomb_fx"] = "hotfoot"  # landed on it: legs kick, flames off his behind
+            p["hot_feet"] = True  # and his feet stay hot until he lands, for melting ice
             self.count("hotfoots")
             bounce = not p["on_ground"]
             if bounce:  # bouncing off it counts toward the air chain (no points, still costs a life)
@@ -2626,6 +2819,154 @@ class Game:
         if self.bombs_hit >= BOMB_GOAL:
             self.unlock_color("bombs")
         self.lose_life()
+
+    def burn(self):
+        """The Floor is Lava: touching the ground costs a life and throws Clawd up in pain."""
+        p = self.p
+        if self.lives <= 1 and not self.shielded:  # his last life: he sinks in (see sink), then the game ends
+            p["y"], p["vx"], p["vy"], p["dash"], p["bomb_fx"] = GROUND - PH, 0.0, 0.0, 0.0, "hotfoot"
+            self.sinking = 0.0
+            self.play("boom")
+            x = p["x"] + PW / 2
+            self.burst(x, GROUND - 4, LAVA_COLORS[1], 24, 260)
+            self.burst(x, GROUND - 4, LAVA_COLORS[3], 12, 220)
+            self.rings.append(dict(x=x, y=GROUND, r=6.0, life=0.4, c=LAVA_COLORS[2]))
+            self.pops.append(dict(x=max(70, min(W - 70, x)), y=GROUND - 130, life=1.4, txt="TOO HOT!", c=BOMB_RED, size=20))
+            self.shake = 10
+            return
+        self.break_air()
+        p["y"], p["vy"], p["on_ground"], p["chain"], p["block_grace"] = GROUND - PH, -LAVA_BOUNCE, False, 0, 0.0
+        p["burnt"], p["bomb_fx"], p["bomb_t"], p["dash"] = True, "hotfoot", 0.0, 0.0  # legs kick, flames off his behind
+        p["hot_feet"] = True
+        self.play("boom")
+        x = p["x"] + PW / 2
+        self.burst(x, GROUND - 4, LAVA_COLORS[1], 18, 240)
+        self.burst(x, GROUND - 4, LAVA_COLORS[3], 10, 200)
+        self.rings.append(dict(x=x, y=GROUND, r=6.0, life=0.4, c=LAVA_COLORS[2]))
+        self.pops.append(dict(x=max(60, min(W - 60, x)), y=GROUND - 130, life=1.0, txt="OUCH!", c=BOMB_RED, size=18))
+        self.shake = 8
+        self.lose_life()
+
+    def sink(self, dt):
+        """Clawd's last life lost to the lava: legs kicking, he sinks under where he fell in, a last bubble pops,
+        and then the game ends. Everything else holds still meanwhile."""
+        p = self.p
+        before, self.sinking = self.sinking, self.sinking + dt
+        k = min(1.0, self.sinking / (SINK_TIME * 0.7))
+        bob = math.sin(self.sinking * 22) * 2 * (1 - k)  # struggling at the surface, then slipping under
+        p["y"] = GROUND - PH + 4 + (PH + 2) * k ** 1.6 + bob
+        p["bomb_t"] = 0.0
+        x = p["x"] + PW / 2
+        if k < 1 and random.random() < 0.8:  # the lava boiling around him
+            self.parts.append(dict(x=x + random.uniform(-PW / 2, PW / 2), y=GROUND - 2, vx=random.uniform(-40, 40),
+                                   vy=random.uniform(-160, -60), life=0.4, c=random.choice(LAVA_COLORS[1:]),
+                                   s=random.choice((2, 3, 4)), g=-100))
+        pop = SINK_TIME * 0.75
+        if before < pop <= self.sinking:  # one last bubble where he went under
+            self.play("fizzle")
+            self.burst(x, GROUND - 2, LAVA_COLORS[3], 10, 150)
+            self.rings.append(dict(x=x, y=GROUND, r=4.0, life=0.4, c=LAVA_COLORS[3]))
+            self.dust.append(dict(x=x, y=GROUND - 6, vx=0.0, r=6.0, life=0.8))
+        if self.sinking >= SINK_TIME:
+            self.sinking = None
+            self.lose_life()
+
+    def break_up(self, x, top, w, h, color, edge):
+        """A platform on the lava breaks into chunks that sink in."""
+        self.play("crash")
+        for i in range(0, w, 10):
+            for j in range(0, h, 8):
+                self.chunks.append(dict(x=x + i, y=top + j, vx=random.uniform(-40, 40), vy=random.uniform(-120, -20),
+                                        s=random.choice((6, 8, 10)), c=color, edge=edge))
+
+    def lava_things(self, dt):
+        """The slab crumbling once Clawd leaves it, ice floes melting away, and broken pieces sinking."""
+        slab = self.slab
+        if slab and slab["t"] is not None:
+            slab["t"] += dt
+            if slab["t"] >= SLAB_CRUMBLE:
+                self.slab = None
+                self.break_up(slab["x"], slab["top"], SLAB_W, SLAB_H, EARTH, DIM)
+        for f in self.floes:
+            f["life"] -= dt
+            if random.random() < dt * 6:  # steam off it as it melts
+                self.parts.append(dict(x=f["x"] + random.uniform(0, f["w"]), y=f["top"], vx=random.uniform(-8, 8),
+                                       vy=random.uniform(-40, -20), life=0.5, c=random.choice((INK, DIM)), s=2, g=-30))
+            if f["life"] <= 0:
+                self.break_up(f["x"], f["top"], f["w"], FLOE_H, ICE, ICE_EDGE)
+        self.floes = [f for f in self.floes if f["life"] > 0]
+        for b in self.chunks:
+            b["vy"] += 900 * dt
+            b["x"] += b["vx"] * dt
+            b["y"] += b["vy"] * dt
+            if b["y"] > GROUND + 2:
+                b["dead"] = True
+                hiss = b["c"] == ICE
+                self.burst(b["x"] + b["s"] / 2, GROUND - 2, random.choice((INK, ICE_EDGE) if hiss else LAVA_COLORS[1:]), 4, 120)
+        self.chunks = [b for b in self.chunks if not b.get("dead")]
+
+    def float_ice(self, b):
+        """Ice landing on the lava: it floats there as a little platform for a while."""
+        b["dead"] = True
+        self.play("fizzle")
+        x = max(0.0, min(W - FLOE_W, b["x"] + b["s"] / 2 - FLOE_W / 2))
+        self.floes.append(dict(x=x, top=GROUND - FLOE_H, w=FLOE_W, life=FLOE_TIME))
+        self.burst(x + FLOE_W / 2, GROUND - 4, ICE_EDGE, 10, 140)
+        self.burst(x + FLOE_W / 2, GROUND - 4, INK, 6, 100)
+
+    def freeze(self):
+        """Ice touched him: frozen solid until he lands (or for a moment, if he was standing)."""
+        p = self.p
+        p["frozen"], p["freeze_t"] = True, ICE_FROZEN_ON_GROUND if p["on_ground"] else 0.0
+        p["vx"], p["dash"] = 0.0, 0.0
+        p["vy"] = max(p["vy"], 0.0)  # stops rising and drops
+        self.play("fizzle")
+        self.burst(p["x"] + PW / 2, p["y"] + PH / 2, ICE_EDGE, 16, 160)
+        self.pops.append(dict(x=p["x"] + PW / 2, y=p["y"] - 20, life=1.0, txt="FROZEN!", c=ICE, size=14))
+
+    def thaw(self):
+        p = self.p
+        p["frozen"] = False
+        self.play("crash")
+        cx, cy = p["x"] + PW / 2, p["y"] + PH / 2
+        self.burst(cx, cy, ICE, 18, 220)
+        self.burst(cx, cy, ICE_EDGE, 10, 160, size=4)
+
+    def melt_ice(self, b):
+        """A hot foot breaks ice: points, and he can jump off it like any block. It uses the heat up: one ice per bomb."""
+        p = self.p
+        p["hot_feet"] = False
+        if p["bomb_fx"] == "hotfoot":
+            p["bomb_fx"] = None  # the flames go out
+        bx, by = b["x"] + b["s"] / 2, b["y"] + b["s"] / 2
+        self.hit_block(b, air=not p["on_ground"], value=ICE_POINTS)
+        self.burst(bx, by, ICE_EDGE, 16, 240)
+        self.burst(bx, by, (255, 150, 40), 10, 180)
+        self.pops.append(dict(x=bx, y=by - 24, life=0.9, txt="MELTED!", c=(255, 150, 40), size=12))
+        if not p["on_ground"]:
+            self.broke_in_air(bx, by, ICE)
+
+    def shatter_ice(self, b):
+        """Ice breaks up: on Clawd (freezing him) or on the ground. It never costs a life."""
+        b["dead"] = True
+        self.play("crash")
+        bx, by = b["x"] + b["s"] / 2, min(b["y"] + b["s"] / 2, GROUND - 6)
+        self.burst(bx, by, ICE, 16, 160)
+        self.burst(bx, by, ICE_EDGE, 8, 120, size=4)
+
+    def draw_ice(self, b, cx, cy, now):
+        """An ice crystal, swaying as it falls in a soft cold glow, with a glint running down its edge."""
+        s = b["s"]
+        c = self.canvas
+        glow = pygame.Surface((s * 2, s * 2), pygame.SRCALPHA)
+        pulse = 0.5 + 0.5 * math.sin(now / 260 + b["x"])
+        pygame.draw.circle(glow, (*ICE, int(22 + 18 * pulse)), (s, s), int(s * 0.8))
+        c.blit(glow, (cx - s, cy - s))
+        art = pygame.transform.rotate(self.ice_art, math.sin(now / 300 + b["x"]) * 12)  # a gentle sway
+        c.blit(art, art.get_rect(center=(cx, cy)))
+        k = (now / 90 + b["x"]) % 14  # a glint slides down the lit edge now and then
+        if k < 5:
+            c.fill((255, 255, 255), (cx - 7 + k * 1.2, cy - 10 + k * 2.6, 3, 3))
 
     def fizzle(self, b):
         """A bomb that lands just puffs out."""
@@ -2707,7 +3048,7 @@ class Game:
 
     def use_charge(self):
         """E or the ZAP button: use the stored zap, which then goes back to nothing. Kept if there's nothing to hit."""
-        if self.mode != "play" or not self.charge or not any(not b.get("bomb") for b in self.blocks):
+        if self.mode != "play" or not self.charge or not any(not b.get("bomb") and not b.get("ice") for b in self.blocks):
             return
         power, self.charge = self.charge, 0
         self.zap(power)
@@ -2715,7 +3056,7 @@ class Game:
     def zap(self, power):
         """Lightning: destroy the power blocks closest to the ground."""
         self.play("zap")
-        safe = [b for b in self.blocks if not b.get("bomb")]
+        safe = [b for b in self.blocks if not b.get("bomb") and not b.get("ice")]
         targets = sorted(safe, key=lambda b: -(b["y"] + b["s"]))[:power]
         if targets and power > BOLT_KILLS:
             self.pops.append(dict(x=W / 2, y=140, life=1.0, txt=f"ZAP x{power}", c=BOLT_COLOR, size=18))
@@ -2806,6 +3147,14 @@ class Game:
             p["blink"] = 0.12
 
         self.dance_check(dt, controls)
+        self.update_poll -= dt
+        if self.update_poll <= 0:
+            self.update_poll = UPDATE_POLL
+            self.check_update_timer()
+        if self.update_end is not None and not self.update_out and pygame.time.get_ticks() >= self.update_end:
+            self.update_out, self.update_ready, self.update_banner = True, True, 6.0  # the menus get the update button
+            self.play("warn")
+        self.update_banner = max(0.0, self.update_banner - dt)
         self.check_in -= dt
         if self.check_in <= 0:
             self.check_in = VERSION_CHECK
@@ -2830,6 +3179,9 @@ class Game:
                 self.play("tick")
         if self.mode != "play":
             return
+        if self.sinking is not None:
+            self.sink(dt)
+            return
         self.t += dt
         if not self.daily:
             self.hat_stats["playtime"] += dt
@@ -2845,12 +3197,10 @@ class Game:
         self.check_hats()  # the timed ones: an hour in one game, minutes without losing a life
 
         left, right, jump = controls
-        if self.daily == "MIRROR":
-            left, right = right, left
+        if p.get("frozen"):
+            left = right = jump = False  # stuck in the ice
 
         accel, top = (2600 if p["on_ground"] else 1800), 230
-        if self.daily == "SUPER SPEED":
-            accel, top = accel * 1.3, 330
         direction = right - left
         p["dash_cd"] -= dt
         for g in self.ghosts:
@@ -2875,7 +3225,8 @@ class Game:
         p["jump_buffer"] = JUMP_WINDOW if pressed else max(0.0, p["jump_buffer"] - dt)
         p["block_grace"] = max(0.0, p["block_grace"] - dt)
         p["bj_t"] += dt
-        wall = -1 if p["x"] <= 2 else (1 if p["x"] >= W - PW - 2 else 0)
+        wl, wr = self.walls()
+        wall = -1 if p["x"] <= wl + 2 else (1 if p["x"] >= wr - PW - 2 else 0)
         was_sliding, p["sliding"] = p["sliding"], 0
         if jump and p["on_ground"]:
             p["vy"], p["on_ground"], p["jump_buffer"] = -JUMP_SPEED, False, 0.0
@@ -2890,7 +3241,7 @@ class Game:
             self.count("jumps")
             self.count("walljumps")
             p["dash"] = 0.0
-            wx = 0 if wall < 0 else W
+            wx = wl if wall < 0 else wr
             for _ in range(10):
                 self.parts.append(dict(x=wx, y=p["y"] + PH / 2 + random.uniform(-12, 12),
                                        vx=-wall * random.uniform(60, 200), vy=random.uniform(-120, 60),
@@ -2905,26 +3256,34 @@ class Game:
             p["sliding"] = wall
             p["slide_t"] += dt
             if random.random() < (0.9 if p["slide_panic"] else 0.5):
-                self.parts.append(dict(x=0 if wall < 0 else W, y=p["y"] + PH - 6, vx=-wall * random.uniform(10, 40),
+                self.parts.append(dict(x=wl if wall < 0 else wr, y=p["y"] + PH - 6, vx=-wall * random.uniform(10, 40),
                                        vy=random.uniform(-40, 0), life=0.3, c=INK if p["slide_panic"] else DIM, s=2))
         p["bomb_t"] += dt
         if (p["bomb_fx"] == "dizzy" and p["bomb_t"] > DIZZY_TIME
                 or p["bomb_fx"] == "hotfoot" and (p["bomb_t"] > HOTFOOT_TIME or p["on_ground"])):
             p["bomb_fx"] = None
+        if p["hot_feet"] and p["on_ground"]:
+            p["hot_feet"] = False  # cooled off on landing
+        if p["hot_feet"] and p["bomb_fx"] != "hotfoot" and random.random() < 0.5:  # hot feet: steam and a glow
+            self.parts.append(dict(x=p["x"] + PW / 2 + random.uniform(-12, 12), y=p["y"] + PH - 2,
+                                   vx=random.uniform(-10, 10), vy=random.uniform(-40, -20), life=0.4,
+                                   c=random.choice((DIM, INK, (255, 150, 40))), s=2, g=-60))
         if p["bomb_fx"] == "hotfoot" and random.random() < 0.9:  # flames off his behind
             self.parts.append(dict(x=p["x"] + PW / 2 + random.uniform(-14, 14), y=p["y"] + PH - 4,
                                    vx=random.uniform(-25, 25), vy=random.uniform(-30, 60), life=0.3,
                                    c=random.choice(FIRE), s=random.choice((4, 5, 6)), g=-250))
-        if not p["on_ground"] and not jump and p["vy"] < -200:
+        if p.get("burnt") and p["vy"] >= 0:
+            p["burnt"] = False
+        if not p["on_ground"] and not jump and p["vy"] < -200 and not p.get("burnt"):
             p["vy"] = -200  # short hop on early release
 
-        p["vy"] += (900 if self.daily == "LOW GRAVITY" else 1500) * dt
+        p["vy"] += 1500 * dt
         p["x"] += p["vx"] * dt
         p["y"] += p["vy"] * dt
-        if p["x"] < 0:
-            p["x"], p["vx"] = 0, 0.0
-        if p["x"] > W - PW:
-            p["x"], p["vx"] = W - PW, 0.0
+        if p["x"] < wl:
+            p["x"], p["vx"] = wl, 0.0
+        if p["x"] > wr - PW:
+            p["x"], p["vx"] = wr - PW, 0.0
         if p["y"] < 64:  # keep Clawd under the HUD
             if not p.get("at_sky"):
                 p["at_sky"] = True  # each separate touch of the top counts
@@ -2932,11 +3291,48 @@ class Game:
             p["y"], p["vy"] = 64, max(p["vy"], 0.0)
         elif p["y"] > 90:
             p["at_sky"] = False
-        if p["y"] >= GROUND - PH:
+        if p.get("frozen"):  # breaks out on landing, or after a moment if the ice caught him standing
+            if p["on_ground"] and p["freeze_t"] > 0:
+                p["freeze_t"] -= dt
+                if p["freeze_t"] <= 0:
+                    self.thaw()
+            elif p["y"] >= GROUND - PH and not p["on_ground"]:
+                self.thaw()
+        if self.lava_floor:
+            # standing on the slab or an ice floe (landing from above only)
+            slab, on = self.slab, None
+            bottom = p["y"] + PH
+            for pl in ([slab] if slab and slab["t"] is None else []) + self.floes:
+                over = p["x"] + PW - 6 > pl["x"] and p["x"] + 6 < pl["x"] + pl["w"]
+                if over and p["vy"] >= 0 and bottom >= pl["top"] and bottom - p["vy"] * dt - 1 <= pl["top"]:
+                    on = pl
+            if on:
+                if not p["on_ground"]:
+                    self.break_air()
+                    p["block_grace"] = 0.0
+                    if p.get("frozen"):
+                        self.thaw()  # landing breaks him out, same as on the ground
+                p["y"], p["vy"], p["on_ground"] = on["top"] - PH, 0.0, True
+            elif p.get("on"):
+                p["on_ground"] = False  # jumped or walked off
+            p["on"] = on
+            if slab and slab["t"] is None and on is not slab:
+                slab["t"] = 0.0  # he left the slab: it starts to crumble
+            self.lava_things(dt)
+            if random.random() < 0.25:  # embers drifting up off the lava
+                self.parts.append(dict(x=random.uniform(0, W), y=GROUND, vx=random.uniform(-6, 6),
+                                       vy=random.uniform(-50, -20), life=0.8, c=random.choice(LAVA_COLORS[1:]), s=2, g=0))
+            if p["y"] >= GROUND - PH:
+                self.burn()
+                if self.lives <= 0:
+                    return
+        elif p["y"] >= GROUND - PH:
             if not p["on_ground"] and not self.daily:
                 self.landings += 1
                 if self.landings >= LANDING_GOAL:
                     self.unlock_color("landings")
+            if not p["on_ground"]:
+                self.break_air()
             p["y"], p["vy"], p["on_ground"], p["chain"], p["block_grace"] = GROUND - PH, 0.0, True, 0, 0.0
         if p["on_ground"] and p["vx"]:
             p["walk"] += abs(p["vx"]) * dt
@@ -2996,19 +3392,43 @@ class Game:
         pcx = p["x"] + PW / 2
         for b in self.blocks:
             b["y"] += b["vy"] * dt
-            if self.magnet and not b.get("bomb"):
+            if self.magnet and not b.get("bomb") and not b.get("ice"):
                 pull = pcx - (b["x"] + b["s"] / 2)
                 b["x"] += max(-MAGNET_PULL * dt, min(MAGNET_PULL * dt, pull))
+            elif self.daily == "MAGNET MANIA" and b.get("bomb"):
+                pull = pcx - (b["x"] + b["s"] / 2)
+                b["x"] += max(-MANIA_BOMB_PULL * dt, min(MANIA_BOMB_PULL * dt, pull))
+            if wl or wr != W:
+                b["x"] = max(wl, min(wr - b["s"], b["x"]))
             b["rot"] += b["spin"] * dt
             b["emit"] = b.get("emit", 0.0) - dt
-            if b["emit"] <= 0 and b["y"] > 0:
+            if b["emit"] <= 0 and b["y"] > 0 and not (self.daily == "GHOST BLOCKS" and not b.get("bomb")):
                 b["emit"] = 0.03
                 self.trail.append(dict(x=b["x"] + random.random() * b["s"], y=b["y"] + random.random() * 4,
                                        vx=random.uniform(-8, 8), vy=random.uniform(-14, 4),
-                                       life=0.8, max=0.8, c=b["c"], s=random.choice((2, 3, 3))))
+                                       life=0.8, max=0.8, c=random.choice((ICE_EDGE, ICE)) if b.get("ice") else b["c"],
+                                       s=random.choice((2, 3, 3))))
+            if b.get("ice") and b["y"] > 0 and random.random() < dt * 25:  # frost sparkles and flakes as it falls
+                flake = random.random() < 0.3
+                self.parts.append(dict(x=b["x"] + random.uniform(0, b["s"]), y=b["y"] + random.uniform(0, b["s"]),
+                                       vx=random.uniform(-40, 40), vy=random.uniform(-30, 10), g=40,
+                                       life=random.uniform(0.5, 0.9), c=random.choice((ICE_EDGE, (255, 255, 255), ICE)),
+                                       s=2, flake=flake))
             hit = (b["x"] < p["x"] + PW - 4 and b["x"] + b["s"] > p["x"] + 4
                    and b["y"] < p["y"] + PH - 6 and b["y"] + b["s"] > p["y"])
-            if hit and b.get("bomb"):
+            if hit and b.get("ice"):
+                if p["bomb_fx"] == "hotfoot" or p["hot_feet"]:  # hot feet melt straight through it
+                    self.melt_ice(b)
+                else:  # it shatters on him and freezes him (no points: only a hot foot scores off ice)
+                    self.shatter_ice(b)
+                    self.freeze()
+            elif b.get("ice"):
+                if b["y"] + b["s"] >= GROUND:
+                    if self.lava_floor:
+                        self.float_ice(b)
+                    else:
+                        self.shatter_ice(b)
+            elif hit and b.get("bomb"):
                 self.explode(b)
                 if self.lives <= 0:
                     break
@@ -3095,6 +3515,9 @@ class Game:
                 self.shield_in = SHIELD_COOLDOWN + self.rng.random() * SHIELD_RANDOM
             if kind != "bolts" or self.charge < ZAP_MAX:  # the zap may have filled up while this one waited
                 getattr(self, kind).append(dict(x=40 + self.rng.random() * (W - 80), y=-24.0, t=0.0, dead=False))
+        if wl or wr != W:
+            for o in self.hearts + self.bolts + self.magnets + self.shields:
+                o["x"] = max(wl + 26, min(wr - 26, o["x"]))
 
         # shield pickups: catching one saves Clawd's next lost life (they don't stack)
         for o in self.shields:
@@ -3213,6 +3636,8 @@ class Game:
     def draw_table(self, top, which="all"):
         """A top 10: all time, this week, or today's Daily Challenge. Yesterday's daily winner wears a crown."""
         weekly = which != "all"
+        if which == "all":
+            self.text("SEASON 1", W / 2, top - 20, 11, CLAWD)
         self.text({"all": "HIGH SCORES", "week": "THIS WEEK", "day": "DAILY CHALLENGE"}[which], W / 2, top, 18, GOLD)
         status = {"online": ("ONLINE  EVERYONE'S SCORES", (111, 183, 168)),
                   "offline": ("OFFLINE  SHOWING SAVED LIST", DIM),
@@ -3235,9 +3660,17 @@ class Game:
             skin = s.get("skin")
             name_col = TIER_COLOR[skin] if skin is not None and skin in TIER_COLOR else col  # by the color they wore
             self.text(f"{i + 1}.", 92, y, 13, col if mine else DIM, "right")
-            self.text(s["name"], 104, y, 13, name_col, "left")
+            look = skin if skin is not None and 0 <= skin < len(SKINS) else 0  # a little Clawd in the color they wore
+            hat = s.get("hat", -1)
+            if not (isinstance(hat, int) and 0 <= hat < len(HATS)):
+                hat = -1
+            full = self.dressed(look, hat, pygame.time.get_ticks())
+            k = min(0.5, 21 / full.get_height())  # half size, a little smaller if a tall hat would reach the row above
+            mini = pygame.transform.scale(full, (round(full.get_width() * k), round(full.get_height() * k)))
+            self.canvas.blit(mini, mini.get_rect(midbottom=(115, y + 8)))
+            self.text(s["name"], 134, y, 13, name_col, "left")
             if champion and player_of(s["key"]) == champion:  # won yesterday's Daily Challenge
-                cx = 104 + self.font(13).size(s["name"])[0] + 6
+                cx = 134 + self.font(13).size(s["name"])[0] + 6
                 for r, row in enumerate(("X.X.X", "XXXXX", "XXXXX")):
                     for k, ch in enumerate(row):
                         if ch == "X":
@@ -3357,6 +3790,134 @@ class Game:
             y += 18
         self.text("then open Block Catch from your home screen", W / 2, y + 4, 10, DIM)
 
+    def draw_walls(self, now, ox, oy):
+        """Closing Walls: stone walls at each side, a warning stripe on their faces while they move in."""
+        wl, wr = self.walls()
+        if not wl:
+            return
+        c = self.canvas
+        closing = self.t % WALL_CYCLE < WALL_CLOSE
+        for x0, x1, face in ((0, wl, wl - 4), (wr, W, wr)):
+            r = pygame.Rect(round(x0) + ox, oy, round(x1 - x0), GROUND)
+            c.fill(EARTH, r)
+            c.set_clip(r)
+            for row, y in enumerate(range(0, GROUND, 16)):  # bricks, fixed to the wall's face so they move with it
+                c.fill(NIGHT, (r.x, y + oy, r.w, 2))
+                for bx in range(16 * (row % 2), WALL_MAX + 32, 32):
+                    c.fill(NIGHT, (round(face) - bx + ox if x0 == 0 else round(face) + 4 + bx + ox, y + oy, 2, 16))
+            c.set_clip(None)
+            col = BOMB_RED if closing and int(now / 250) % 2 else DIM
+            c.fill(col, (round(face) + ox, oy, 4, GROUND))
+
+    def draw_runners(self, now, ox, oy, halo=False):
+        """Gold blocks crossing the screen (and the warning arrow before each one). halo: a big pulsing glow,
+        so they stand out in Lights Out."""
+        c = self.canvas
+        for r in self.runners:
+            cy = r["y"] + r["s"] / 2 + oy
+            if r["warn"] > 0:
+                if int(now / 110) % 2 == 0:  # blinking arrow at the edge it will come from
+                    ex = 14 if r["d"] > 0 else W - 14
+                    pygame.draw.polygon(c, GOLD, [(ex - r["d"] * 6, cy - 9), (ex + r["d"] * 8, cy), (ex - r["d"] * 6, cy + 9)])
+                    self.text("!", ex + r["d"] * 18, cy, 16, GOLD)
+                continue
+            s = r["s"]
+            cx = r["x"] + s / 2 + ox
+            if halo:
+                big = int(s * (2.6 + 0.4 * math.sin(now / 90)))
+                aura = pygame.Surface((big * 2, big * 2), pygame.SRCALPHA)
+                pygame.draw.circle(aura, (*GOLD, 70), (big, big), big)
+                pygame.draw.circle(aura, (*BOLT_COLOR, 110), (big, big), big // 2)
+                c.blit(aura, (cx - big, cy - big))
+            glow = pygame.Surface((s * 3, s * 3), pygame.SRCALPHA)
+            pygame.draw.circle(glow, (*GOLD, 60), (s * 1.5, s * 1.5), s * 1.3)
+            c.blit(glow, (cx - s * 1.5, cy - s * 1.5))
+            blk = pygame.Surface((s, s), pygame.SRCALPHA)
+            blk.fill(GOLD)
+            blk.fill(BOLT_COLOR, (0, 0, s, 4))
+            blk.fill((176, 128, 52), (0, s - 4, s, 4))
+            blk.fill((255, 250, 220), (3, 6, 3, 3))  # glint
+            rot = pygame.transform.rotate(blk, r["rot"])
+            c.blit(rot, rot.get_rect(center=(cx, cy)))
+
+    def draw_dark(self, now, ox, oy):
+        """Lights Out: everything's dark except a glow around Clawd. Blocks show as faint specks, bomb fuses spark."""
+        c = self.canvas
+        if not hasattr(self, "light"):  # made once: redrawing a full-screen layer every frame is slow on phones
+            self.light = pygame.Surface((LIGHT_R * 2, LIGHT_R * 2), pygame.SRCALPHA)
+            self.light.fill((6, 6, 12, 245))
+            for r in range(LIGHT_R, 0, -1):  # dark at the edge, clear in the middle
+                pygame.draw.circle(self.light, (6, 6, 12, int(245 * min(1.0, (r / LIGHT_R) ** 2.2))), (LIGHT_R, LIGHT_R), r)
+            self.dark = pygame.Surface((W, H), pygame.SRCALPHA)
+        dark = self.dark
+        dark.fill((6, 6, 12, 245))
+        p = self.p
+        dark.blit(self.light, self.light.get_rect(center=(p["x"] + PW / 2 + ox, p["y"] + PH / 2 + oy)),
+                  special_flags=pygame.BLEND_RGBA_MIN)
+        c.blit(dark, (0, 0))
+        for b in self.blocks:
+            cx, cy = b["x"] + b["s"] / 2 + ox, b["y"] + b["s"] / 2 + oy
+            if b.get("bomb"):
+                if int(now / 60) % 2:
+                    c.fill(GOLD, (cx - 2, cy - b["s"] / 2 - 9, 4, 4))
+            else:
+                c.fill(lerp(NIGHT, b["c"], 0.45), (cx - 2, cy - 2, 4, 4))
+        self.draw_runners(now, ox, oy, halo=True)  # gold blocks shine through the dark
+        # power-ups: a soft glow in their color, about as faint as the blocks' specks
+        for group, color, sway, wobble in ((self.hearts, CLAWD, 2.0, 14), (self.bolts, BOLT_COLOR, 2.6, 10),
+                                           (self.magnets, MAGNET_COLOR, 2.2, 12), (self.shields, SHIELD_COLOR, 2.4, 12)):
+            for o in group:
+                x, y = o["x"] + math.sin(o["t"] * sway) * wobble + ox, o["y"] + oy
+                soft = pygame.Surface((24, 24), pygame.SRCALPHA)
+                pygame.draw.circle(soft, (*color, 45), (12, 12), 11)
+                pygame.draw.circle(soft, (*color, 90), (12, 12), 5)
+                c.blit(soft, (x - 12, y - 12))
+
+    def draw_lava(self, now, ox, oy):
+        """The Floor is Lava's ground: a rolling, glowing surface, and the starting slab while it lasts."""
+        c = self.canvas
+        glow = pygame.Surface((W, 24), pygame.SRCALPHA)
+        for y in range(24):
+            glow.fill((*LAVA_COLORS[1], int(y * 2.5)), (0, y, W, 1))
+        c.blit(glow, (0, GROUND - 24 + oy))
+        c.fill(LAVA_COLORS[0], (0, GROUND + oy, W, H - GROUND))
+        for x in range(0, W, 4):
+            wave = math.sin(now / 320 + x / 18) * 2 + math.sin(now / 190 - x / 9)
+            top = GROUND - 2 + round(wave)
+            c.fill(LAVA_COLORS[1], (x + ox, top + oy, 4, 10))
+            c.fill(LAVA_COLORS[2], (x + ox, top + oy, 4, 3))
+            if math.sin(now / 500 + x * 1.7) > 0.93:  # bright spots that come and go
+                c.fill(LAVA_COLORS[3], (x + ox, top + 1 + oy, 4, 2))
+        for x in range(0, W, 24):  # darker crust drifting along
+            cx = (x + now / 40) % (W + 24) - 24
+            c.fill(LAVA_COLORS[0], (cx + ox, GROUND + 14 + oy + (x // 24) % 3 * 8, 12, 3))
+        slab = self.slab
+        if slab:
+            shake = random.randint(-2, 2) if slab["t"] is not None else 0
+            r = pygame.Rect(slab["x"] + shake + ox, slab["top"] + oy, SLAB_W, SLAB_H)
+            c.fill(EARTH, r)
+            c.fill(DIM, (r.x, r.y, r.w, 3))
+            c.fill(NIGHT, (r.x, r.bottom - 3, r.w, 3))
+            if slab["t"] is not None:  # cracks spreading
+                k = slab["t"] / SLAB_CRUMBLE
+                for i, cx in enumerate((20, 48, 75, 95)):
+                    if k > i * 0.2:
+                        pygame.draw.line(c, NIGHT, (r.x + cx, r.y), (r.x + cx + (6 if i % 2 else -6), r.bottom - 1), 2)
+        for f in self.floes:  # ice floes: thinner and more cracked as they melt, shaking at the end
+            k = 1 - f["life"] / FLOE_TIME
+            shake = random.randint(-1, 1) if f["life"] < 1 else 0
+            sink = round(k * 3)
+            r = pygame.Rect(f["x"] + shake + ox, f["top"] + sink + oy, f["w"], FLOE_H - sink)
+            c.fill(ICE, r)
+            c.fill(ICE_EDGE, (r.x, r.y, r.w, 2))
+            c.fill(ICE_DARK, (r.x, r.bottom - 2, r.w, 2))
+            for i, cx in enumerate((12, 32, 22, 40)):
+                if k > 0.25 + i * 0.15:
+                    pygame.draw.line(c, ICE_DARK, (r.x + cx, r.y), (r.x + cx + (3 if i % 2 else -3), r.bottom - 1), 1)
+        for b in self.chunks:
+            c.fill(b["c"], (b["x"] + ox, b["y"] + oy, b["s"], b["s"]))
+            c.fill(b["edge"], (b["x"] + ox, b["y"] + oy, b["s"], 2))
+
     def draw(self, now):
         c = self.canvas
         c.fill(PANEL)
@@ -3368,10 +3929,19 @@ class Game:
             a = 0.25 + 0.25 * math.sin(now / 900 + ph)
             col = tuple(int(PANEL[i] + (DIM[i] - PANEL[i]) * a) for i in range(3))
             c.fill(col, (x + ox, y + oy, s, s))
+        if self.icy:  # the storm: snow blowing down across the sky
+            for i in range(60):
+                fall = 40 + (i * 37) % 50
+                y = (i * 89 + now / 1000 * fall) % GROUND
+                x = (i * 53 + now / 1000 * fall * 0.6 + math.sin(now / 700 + i) * 10) % W
+                c.fill(INK if i % 3 else DIM, (x + ox, y + oy, 2 if i % 4 else 3, 2 if i % 4 else 3))
 
-        c.fill(EARTH, (0, GROUND + oy, W, H - GROUND))
-        for x in range(0, W, 16):
-            c.fill(DIM, (x + 4 + ox, GROUND + 6 + oy, 6, 2))
+        if self.lava_floor:
+            self.draw_lava(now, ox, oy)
+        else:
+            c.fill(EARTH, (0, GROUND + oy, W, H - GROUND))
+            for x in range(0, W, 16):
+                c.fill(DIM, (x + 4 + ox, GROUND + 6 + oy, 6, 2))
 
         for q in self.trail:
             c.fill(lerp(PANEL, q["c"], q["life"] / q["max"] * 0.9), (q["x"] + ox, q["y"] + oy, q["s"], q["s"]))
@@ -3384,6 +3954,9 @@ class Game:
             c.fill(mark, (b["x"] + ox, GROUND - 3 + oy, b["s"], 3))
             s = b["s"]
             cx, cy = b["x"] + s / 2 + ox, b["y"] + s / 2 + oy
+            if b.get("ice"):
+                self.draw_ice(b, cx, cy, now)
+                continue
             if b.get("bomb"):
                 lit = int(now / (90 if danger > 0.5 else 180)) % 2 == 0
                 glow = pygame.Surface((s * 2 + 8, s * 2 + 8), pygame.SRCALPHA)
@@ -3393,10 +3966,16 @@ class Game:
                 pygame.draw.circle(c, BOMB_BODY, (cx, cy), s / 2)
                 c.fill((70, 66, 84), (cx - 5, cy - 5, 3, 3))  # shine
                 c.fill(DIM, (cx - 1, cy - s / 2 - 5, 3, 5))  # fuse
+                if self.daily == "MAGNET MANIA":  # dotted red pull line to Clawd
+                    tx, ty = p["x"] + PW / 2 + ox, p["y"] + PH / 2 + oy
+                    n = max(1, int(math.hypot(tx - cx, ty - cy) / 14))
+                    for k in range(1, n):
+                        f = (k + (now / 120) % 1) / n
+                        c.fill(lerp(PANEL, BOMB_RED, 0.55), (cx + (tx - cx) * f - 1, cy + (ty - cy) * f - 1, 2, 2))
                 spark = GOLD if int(now / 60) % 2 else (255, 250, 220)
                 c.fill(spark, (cx - 2 + random.randint(-1, 1), cy - s / 2 - 9 + random.randint(-1, 1), 4, 4))
                 continue
-            if self.magnet:
+            if self.magnet and self.daily != "GHOST BLOCKS":
                 # dotted pull line from the block to Clawd
                 tx, ty = p["x"] + PW / 2 + ox, p["y"] + PH / 2 + oy
                 n = max(1, int(math.hypot(tx - cx, ty - cy) / 14))
@@ -3408,6 +3987,9 @@ class Game:
             blk.fill(tuple(min(255, v + 50) for v in b["c"]), (0, 0, s, 4))
             blk.fill(tuple(int(v * 0.78) for v in b["c"]), (0, s - 4, s, 4))
             rot = pygame.transform.rotate(blk, b["rot"])
+            if self.daily == "GHOST BLOCKS":  # fades away and back, each block on its own beat
+                k = 0.5 + 0.5 * math.sin(now / 380 + b["x"] * 0.11 + b["s"])
+                rot.set_alpha(int(255 * max(0.0, min(1.0, (k - 0.3) / 0.4))))
             c.blit(rot, rot.get_rect(center=(b["x"] + s / 2 + ox, b["y"] + s / 2 + oy)))
 
         p = self.p
@@ -3478,7 +4060,8 @@ class Game:
         if sliding and not panic:
             # press the tilted sprite's visible pixels flat against the wall
             vis = sprite.get_bounding_rect()
-            body.x = (W - vis.right if sliding > 0 else -vis.left) + ox
+            wl, wr = self.walls()
+            body.x = round(wr - vis.right if sliding > 0 else wl - vis.left) + ox
             body.y = round(p["y"] + PH) - vis.bottom + oy
         if self.shielded and self.mode in ("play", "paused", "resume"):
             layer, edge = self.shield_layer(sprite, now)
@@ -3507,7 +4090,20 @@ class Game:
             whole.blit(art, art.get_rect(midbottom=(mid, pad + hat_bottom)))
             whole = apply_moves(whole, moves)
             clawd = [(whole, whole.get_rect(center=body.center))]
+        if self.sinking is not None:
+            c.set_clip(pygame.Rect(0, 0, W, GROUND - 2 + oy))  # under the lava's surface he can't be seen
         c.blits(clawd)
+        c.set_clip(None)
+        if p.get("frozen") and self.mode in ("play", "paused", "resume"):
+            box = body.inflate(14, 14)
+            ice = pygame.Surface(box.size, pygame.SRCALPHA)
+            ice.fill((190, 235, 255, 130))
+            pygame.draw.polygon(ice, (255, 255, 255, 150), [(3, 3), (box.w * 0.5, 3), (3, box.h * 0.6)])  # shine
+            pygame.draw.line(ice, (*ICE_DARK, 230), (box.w * 0.7, box.h * 0.2), (box.w * 0.85, box.h * 0.5), 2)  # crack
+            pygame.draw.rect(ice, (255, 255, 255), ice.get_rect(), 2)
+            c.blit(ice, box)
+            if int(now / 120) % 3 == 0:  # frost sparkling on it
+                c.fill((255, 255, 255), (box.right - 6, box.top + 4, 2, 2))
         if p["bomb_fx"] == "dizzy" and self.mode == "play":
             top = body.top - (10 if hat >= 0 else 0)
             for k in range(3):  # stars circling his head
@@ -3532,6 +4128,11 @@ class Game:
         for q in self.parts:
             if q.get("heart"):
                 self.pixel_heart(q["x"] + ox, q["y"] + oy, 1, q["c"])
+            elif q.get("flake"):  # a tiny snowflake: a plus that twinkles off
+                if q["life"] > 0.2 or int(q["life"] * 30) % 2:
+                    x, y = q["x"] + ox, q["y"] + oy
+                    c.fill(q["c"], (x - 2, y, 6, 2))
+                    c.fill(q["c"], (x, y - 2, 2, 6))
             else:
                 c.fill(q["c"], (q["x"] + ox, q["y"] + oy, q["s"], q["s"]))
         for q in self.strikes:
@@ -3549,26 +4150,7 @@ class Game:
                 for k, ch in enumerate(row):
                     if ch == "X":
                         c.fill(BOLT_COLOR, (bx - 9 + k * 3 + ox, o["y"] - 12 + r * 3 + oy, 3, 3))
-        for r in self.runners:
-            cy = r["y"] + r["s"] / 2 + oy
-            if r["warn"] > 0:
-                if int(now / 110) % 2 == 0:  # blinking arrow at the edge it will come from
-                    ex = 14 if r["d"] > 0 else W - 14
-                    pygame.draw.polygon(c, GOLD, [(ex - r["d"] * 6, cy - 9), (ex + r["d"] * 8, cy), (ex - r["d"] * 6, cy + 9)])
-                    self.text("!", ex + r["d"] * 18, cy, 16, GOLD)
-                continue
-            s = r["s"]
-            cx = r["x"] + s / 2 + ox
-            glow = pygame.Surface((s * 3, s * 3), pygame.SRCALPHA)
-            pygame.draw.circle(glow, (*GOLD, 60), (s * 1.5, s * 1.5), s * 1.3)
-            c.blit(glow, (cx - s * 1.5, cy - s * 1.5))
-            blk = pygame.Surface((s, s), pygame.SRCALPHA)
-            blk.fill(GOLD)
-            blk.fill(BOLT_COLOR, (0, 0, s, 4))
-            blk.fill((176, 128, 52), (0, s - 4, s, 4))
-            blk.fill((255, 250, 220), (3, 6, 3, 3))  # glint
-            rot = pygame.transform.rotate(blk, r["rot"])
-            c.blit(rot, rot.get_rect(center=(cx, cy)))
+        self.draw_runners(now, ox, oy)
         for m in self.magnets:
             mx = m["x"] + math.sin(m["t"] * 2.2) * 12
             pulse = 1 + 0.15 * math.sin(m["t"] * 9)
@@ -3595,6 +4177,9 @@ class Game:
             c.blit(glow, (hx - 20 + ox, h["y"] - 20 + oy))
             self.pixel_heart(hx - 10 + ox, h["y"] - 9 + oy, 3, CLAWD)
 
+        self.draw_walls(now, ox, oy)
+        if self.daily == "LIGHTS OUT" and self.mode != "title":
+            self.draw_dark(now, ox, oy)
         for q in self.pops:
             if q.get("jackpot"):
                 # pops in big, wobbles and shimmers through the rainbow
@@ -3674,6 +4259,9 @@ class Game:
                     self.text("SPACE PLAY   T DAILY   M SOUND   F11 FULL SCREEN", W / 2, 366, 9, DIM)
                 elif not self.on_home_screen:
                     self.button("ADD TO HOME SCREEN", W / 2, 366, 354, 30, self.go("home"), 10, GOLD)
+                timer = self.update_timer_text()
+                if timer and not self.update_ready:
+                    self.text(timer, W / 2, 80, 12, GOLD if int(now / 500) % 2 else INK)
                 if self.update_ready:
                     if TOUCH:
                         self.rainbow_button("NEW VERSION  TAP TO UPDATE", W / 2, 80, 300, 28, self.update_now, 10, now)
@@ -3720,12 +4308,15 @@ class Game:
                 for k, (tab, label) in enumerate((("all", "ALL TIME"), ("week", "THIS WEEK"), ("day", "DAILY CHALLENGE"))):
                     self.button(label, W / 2 + (k - 1) * 128, 72, 124, 26, lambda tab=tab: self.board_tab_to(tab), 8,
                                 INK if self.board_tab == tab else DIM)
-                self.draw_table(110, self.board_tab)
+                self.draw_table(128, self.board_tab)
                 self.button("BACK", W / 2 - 76, 404, 140, 34, self.go("title"), 12, DIM)
                 self.button("PLAY", W / 2 + 76, 404, 140, 34, self.start, 12, CLAWD)
             elif self.mode in ("paused", "resume"):
                 c.blits(clawd)  # Clawd stays bright while napping
                 self.draw_zzz(body, now)
+                timer = self.update_timer_text()
+                if timer:
+                    self.text(timer, W / 2, 120, 14, GOLD)
                 if self.mode == "resume":
                     n = math.ceil(self.countdown)
                     grow = 1 + 0.4 * (self.countdown - n + 1) ** 3  # each number pops in, then settles
@@ -3777,6 +4368,15 @@ class Game:
                 self.full_screen_button(W / 2 + 48 if playing else W / 2 + 24, 26)
         if self.notice:
             self.text(self.notice["txt"], W / 2, 64, 12, INK)
+        timer = self.update_timer_text()
+        if timer and self.mode in ("daily", "board", "over", "stats", "help", "gallery", "home", "sync", "synccode"):
+            self.text(timer, W / 2, H - 14, 10, GOLD)
+        if self.update_banner and self.mode == "play":  # it came out mid-game: a banner, the run carries on
+            k = min(1.0, self.update_banner, 6.0 - self.update_banner) * 4  # slides in and out
+            y = 96 - 40 * (1 - min(1.0, k))
+            pygame.draw.rect(self.canvas, NIGHT, (W / 2 - 150, y - 16, 300, 32))
+            pygame.draw.rect(self.canvas, GOLD, (W / 2 - 150, y - 16, 300, 32), 2)
+            self.text("UPDATE OUT!  UPDATE AFTER THIS RUN", W / 2, y, 10, GOLD)
 
         if self.toast:
             t = self.toast
