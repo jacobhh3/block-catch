@@ -3,12 +3,16 @@
 //   GET /add/<name>/<score>         adds a score
 //   GET /add/<name>/<score>/<skin>  adds a score with the color the player wore (kept in dreamlo's text field)
 //   GET /add/<name>/<score>/<skin>/<hat>  ...and the hat, as its number + 1 (0: none), kept in dreamlo's seconds field
-//   GET /json/<count>               the top scores, as dreamlo's JSON
+//   GET /json/<count>               the top scores, as dreamlo's JSON, each in the color and hat its player last
+//                                   wore (dreamlo only keeps them with a new best, so they're also kept in STORE "looks")
 //   GET /week/<count>               this week's top scores (weeks start Monday 12am Eastern), as JSON
 //   GET /daily/add/<name>/<score>/<skin>[/<hat>]  a Daily Challenge score; only a player's first of the day counts
 //   GET /daily/<count>              today's Daily Challenge board, and yesterday's top 10 (its #1 wears the crown)
 //   GET /delete/<name>              removes a score; needs the X-Admin-Key header to match the ADMIN_KEY secret
 //                                   (run delete_score.py rather than calling this by hand)
+//   GET /admin/set/<name>/<score>/<skin>/<hat>  puts a score on the board exactly as given (replacing, even with a
+//                                   lower score), with that color and hat (+1, 0: none); also on this week's board if
+//                                   the name is there. Needs X-Admin-Key (the Leaderboard Manager app uses it)
 //   GET /update                     the update countdown: {"at": when it ends (ms since 1970, 0: none), "start": when
 //                                   it was set, "now": the time}
 //   GET /update/set/<minutes>       starts the countdown (0 cancels it); needs X-Admin-Key (run update_timer.py)
@@ -62,10 +66,42 @@ async function recordWeek(env, key, score, skin, hat = 0) {
 
 async function topOfWeek(env, count) {
   const week = weekStart();
-  const board = (await env.STORE.get("week:" + week, "json")) || {};
-  const entries = Object.entries(board).map(([name, e]) => ({ name, score: e.score, skin: e.skin, hat: e.hat || 0 }))
-    .sort((a, b) => b.score - a.score).slice(0, count);
+  const [board, looks] = await Promise.all([env.STORE.get("week:" + week, "json"), env.STORE.get("looks", "json")]);
+  const entries = Object.entries(board || {}).map(([name, e]) => {
+    const look = (looks || {})[name];
+    return { name, score: e.score, skin: look ? look.skin : e.skin, hat: look ? look.hat : e.hat || 0 };
+  }).sort((a, b) => b.score - a.score).slice(0, count);
   return { week, entries };
+}
+
+// ---------- the color and hat each player last wore ----------
+async function recordLook(env, key, skin, hat) {
+  // every run counts, not just a new best, so the boards show what a player wears now
+  const looks = (await env.STORE.get("looks", "json")) || {};
+  const was = looks[key];
+  if (!was || was.skin !== skin || was.hat !== hat) {
+    looks[key] = { skin, hat };
+    await env.STORE.put("looks", JSON.stringify(looks));
+  }
+}
+
+async function dressBoard(env, text) {
+  // dreamlo's JSON, with each entry's text (color) and seconds (hat + 1) set to the player's latest look
+  const looks = await env.STORE.get("looks", "json");
+  if (!looks) return text;
+  try {
+    const data = JSON.parse(text);
+    const board = data.dreamlo && data.dreamlo.leaderboard;
+    let rows = board && board.entry;
+    if (!rows) return text;
+    for (const r of Array.isArray(rows) ? rows : [rows]) {
+      const look = looks[r.name];
+      if (look) { r.text = String(look.skin); r.seconds = String(look.hat); }
+    }
+    return JSON.stringify(data);
+  } catch (e) {
+    return text;
+  }
 }
 
 // ---------- Daily Challenge ----------
@@ -172,6 +208,24 @@ export default {
         return new Response(JSON.stringify(board), { headers: { ...headers, "Content-Type": "application/json" } });
       }
     }
+    if (parts[0] === "admin" && parts[1] === "set" && parts.length === 6 && parts[2].length <= 60
+        && /^\d{1,9}$/.test(parts[3]) && /^\d{1,3}$/.test(parts[4]) && /^\d{1,3}$/.test(parts[5]) && env.STORE) {
+      if (!(await isAdmin(request, env))) return new Response("wrong admin key", { status: 403, headers });
+      const key = decodeURIComponent(parts[2]), score = +parts[3], skin = +parts[4], hat = +parts[5];
+      const dreamlo = (path) => fetch("http://dreamlo.com/lb/" + path, { headers: { "User-Agent": "BlockCatchRelay" } })
+        .then((r) => r.text());
+      await dreamlo(`${env.DREAMLO_PRIVATE}/delete/${parts[2]}`);  // dreamlo only raises a score, so start fresh
+      const text = await dreamlo(`${env.DREAMLO_PRIVATE}/add/${parts[2]}/${score}/${hat}/${skin}`);
+      if (!text.startsWith("OK")) return new Response(text, { status: 502, headers });
+      await recordLook(env, key, skin, hat);
+      const wk = "week:" + weekStart();
+      const board = (await env.STORE.get(wk, "json")) || {};
+      if (board[key]) {
+        board[key] = { score, skin, hat };
+        await env.STORE.put(wk, JSON.stringify(board), { expirationTtl: 21 * DAY });
+      }
+      return new Response("OK", { headers });
+    }
     if (parts[0] === "update" && env.STORE) {
       const json = { ...headers, "Content-Type": "application/json" };
       if (parts.length === 1) {
@@ -226,6 +280,10 @@ export default {
     const text = await reply.text();
     if (adding && env.STORE && text.startsWith("OK")) {
       await recordWeek(env, adding.key, adding.score, adding.skin, adding.hat || 0);
+      if (adding.skin !== null) await recordLook(env, adding.key, adding.skin, adding.hat || 0);
+    }
+    if (parts[0] === "json" && env.STORE && reply.ok) {
+      return new Response(await dressBoard(env, text), { status: reply.status, headers });
     }
     return new Response(text, { status: reply.status, headers });
   },

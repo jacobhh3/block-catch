@@ -3665,7 +3665,7 @@ class Game:
             if not (isinstance(hat, int) and 0 <= hat < len(HATS)):
                 hat = -1
             full = self.dressed(look, hat, pygame.time.get_ticks())
-            k = min(0.5, 21 / full.get_height())  # half size, a little smaller if a tall hat would reach the row above
+            k = min(0.5, 22 / full.get_height())  # half size, a little smaller if a tall hat would reach the row above
             mini = pygame.transform.scale(full, (round(full.get_width() * k), round(full.get_height() * k)))
             self.canvas.blit(mini, mini.get_rect(midbottom=(115, y + 8)))
             self.text(s["name"], 134, y, 13, name_col, "left")
